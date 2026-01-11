@@ -1,13 +1,15 @@
 @echo off
 REM PaintBoard Development Scripts
-REM Usage: dev.bat [command]
+REM Usage: dev.bat [command] or double-click for menu
 
 setlocal enabledelayedexpansion
 
 set "PROJECT_DIR=%~dp0.."
 cd /d "%PROJECT_DIR%"
 
-if "%1"=="" goto help
+REM If no argument, show interactive menu
+if "%1"=="" goto menu
+
 if "%1"=="install" goto install
 if "%1"=="dev" goto dev
 if "%1"=="build" goto build
@@ -19,86 +21,130 @@ if "%1"=="format" goto format
 if "%1"=="clean" goto clean
 goto help
 
+:menu
+cls
+echo.
+echo   ============================================
+echo        PaintBoard Development Menu
+echo   ============================================
+echo.
+echo   [1] dev            Start development server
+echo   [2] build          Build project (debug)
+echo   [3] build-release  Build project (release)
+echo   [4] install        Install dependencies
+echo   [5] test           Run all tests
+echo   [6] check          Run all checks
+echo   [7] lint           Run linters
+echo   [8] format         Format code
+echo   [9] clean          Clean build artifacts
+echo   [0] exit           Exit
+echo.
+set /p choice="  Enter choice [1-9, 0 to exit]: "
+
+if "%choice%"=="1" goto dev
+if "%choice%"=="2" goto build
+if "%choice%"=="3" goto build_release
+if "%choice%"=="4" goto install
+if "%choice%"=="5" goto test
+if "%choice%"=="6" goto check
+if "%choice%"=="7" goto lint
+if "%choice%"=="8" goto format
+if "%choice%"=="9" goto clean
+if "%choice%"=="0" goto end
+echo.
+echo   Invalid choice, please try again.
+timeout /t 2 >nul
+goto menu
+
 :install
+echo.
 echo [PaintBoard] Installing dependencies...
 call pnpm install
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 echo [PaintBoard] Dependencies installed successfully!
-goto end
+goto done
 
 :dev
+echo.
 echo [PaintBoard] Starting development server...
 call pnpm tauri dev
-goto end
+goto done
 
 :build
+echo.
 echo [PaintBoard] Building project (debug)...
-call pnpm build:dev
-if errorlevel 1 exit /b 1
+call pnpm run build:dev
+if errorlevel 1 goto error
 cd src-tauri
 call cargo build
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 echo [PaintBoard] Build completed!
-goto end
+goto done
 
 :build_release
+echo.
 echo [PaintBoard] Building project (release)...
-call pnpm build:dev
-if errorlevel 1 exit /b 1
+call pnpm run build:dev
+if errorlevel 1 goto error
 cd src-tauri
 call cargo build --release
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 echo [PaintBoard] Release build completed!
 echo Output: src-tauri\target\release\
-goto end
+goto done
 
 :test
+echo.
 echo [PaintBoard] Running tests...
 call pnpm test
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 cd src-tauri
 call cargo test
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 echo [PaintBoard] All tests passed!
-goto end
+goto done
 
 :check
+echo.
 echo [PaintBoard] Running all checks...
 call pnpm typecheck
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 call pnpm lint
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 cd src-tauri
 call cargo clippy -- -D warnings
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 call cargo test
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 cd ..
 call pnpm test
-if errorlevel 1 exit /b 1
+if errorlevel 1 goto error
 echo [PaintBoard] All checks passed!
-goto end
+goto done
 
 :lint
+echo.
 echo [PaintBoard] Running linters...
 call pnpm lint
 cd src-tauri
 call cargo clippy -- -D warnings
-goto end
+goto done
 
 :format
+echo.
 echo [PaintBoard] Formatting code...
 call pnpm format
-goto end
+goto done
 
 :clean
+echo.
 echo [PaintBoard] Cleaning build artifacts...
 if exist node_modules rmdir /s /q node_modules
 if exist dist rmdir /s /q dist
 cd src-tauri
 if exist target rmdir /s /q target
 echo [PaintBoard] Cleaned!
-goto end
+goto done
 
 :help
 echo.
@@ -118,6 +164,16 @@ echo    lint           Run linters only
 echo    format         Format all code
 echo    clean          Remove all build artifacts
 echo.
+goto done
+
+:error
+echo.
+echo [PaintBoard] ERROR: Command failed!
+goto done
+
+:done
+echo.
+pause
 goto end
 
 :end

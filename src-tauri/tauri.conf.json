@@ -45,13 +45,5 @@
       "timestampUrl": ""
     }
   },
-  "plugins": {
-    "dialog": {
-      "all": true
-    },
-    "fs": {
-      "all": true,
-      "scope": ["$APPDATA/*", "$DOCUMENT/*", "$DOWNLOAD/*", "$HOME/*"]
-    }
-  }
+  "plugins": {}
 }
