@@ -2,6 +2,34 @@ import { create } from 'zustand';
 
 export type ToolType = 'brush' | 'eraser' | 'eyedropper' | 'move' | 'select' | 'lasso';
 
+export type PressureCurve = 'linear' | 'soft' | 'hard' | 'sCurve';
+
+/**
+ * Apply pressure curve transformation
+ * @param pressure - Raw pressure value (0-1)
+ * @param curve - Curve type
+ * @returns Transformed pressure value (0-1)
+ */
+export function applyPressureCurve(pressure: number, curve: PressureCurve): number {
+  const p = Math.max(0, Math.min(1, pressure));
+
+  switch (curve) {
+    case 'linear':
+      return p;
+    case 'soft':
+      // Quadratic ease-out: more sensitive at low pressure
+      return 1 - (1 - p) * (1 - p);
+    case 'hard':
+      // Quadratic ease-in: more sensitive at high pressure
+      return p * p;
+    case 'sCurve':
+      // Smooth S-curve: gradual at extremes, sensitive in middle
+      return p * p * (3 - 2 * p);
+    default:
+      return p;
+  }
+}
+
 interface ToolState {
   // Current tool
   currentTool: ToolType;
@@ -16,6 +44,7 @@ interface ToolState {
   // Pressure sensitivity settings
   pressureSizeEnabled: boolean;
   pressureOpacityEnabled: boolean;
+  pressureCurve: PressureCurve;
 
   // Actions
   setTool: (tool: ToolType) => void;
@@ -28,6 +57,7 @@ interface ToolState {
   resetColors: () => void;
   togglePressureSize: () => void;
   togglePressureOpacity: () => void;
+  setPressureCurve: (curve: PressureCurve) => void;
 }
 
 export const useToolStore = create<ToolState>((set) => ({
@@ -40,6 +70,7 @@ export const useToolStore = create<ToolState>((set) => ({
   backgroundColor: '#ffffff',
   pressureSizeEnabled: true,
   pressureOpacityEnabled: true,
+  pressureCurve: 'linear',
 
   // Actions
   setTool: (tool) => set({ currentTool: tool }),
@@ -66,9 +97,10 @@ export const useToolStore = create<ToolState>((set) => ({
       backgroundColor: '#ffffff',
     }),
 
-  togglePressureSize: () =>
-    set((state) => ({ pressureSizeEnabled: !state.pressureSizeEnabled })),
+  togglePressureSize: () => set((state) => ({ pressureSizeEnabled: !state.pressureSizeEnabled })),
 
   togglePressureOpacity: () =>
     set((state) => ({ pressureOpacityEnabled: !state.pressureOpacityEnabled })),
+
+  setPressureCurve: (curve) => set({ pressureCurve: curve }),
 }));

@@ -75,6 +75,26 @@
   text-align: right;
 }
 
+/* Pressure Curve Select */
+.pressure-select {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.pressure-select:hover {
+  border-color: var(--accent);
+}
+
+.pressure-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 /* Color Picker */
 .color-picker {
   gap: 8px;
@@ -110,4 +130,27 @@
 .actions button {
   font-size: 12px;
   padding: 4px 10px;
+}
+
+/* Zoom Controls */
+.zoom-controls {
+  gap: 4px;
+}
+
+.zoom-controls button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.zoom-controls .zoom-level {
+  width: auto;
+  min-width: 50px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: monospace;
 }

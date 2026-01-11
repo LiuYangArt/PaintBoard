@@ -1,5 +1,18 @@
-import { Brush, Eraser, Pipette, Move, BoxSelect, Undo2, Redo2, LucideIcon } from 'lucide-react';
-import { useToolStore, ToolType } from '@/stores/tool';
+import {
+  Brush,
+  Eraser,
+  Pipette,
+  Move,
+  BoxSelect,
+  Undo2,
+  Redo2,
+  ZoomIn,
+  ZoomOut,
+  LucideIcon,
+} from 'lucide-react';
+import { useToolStore, ToolType, PressureCurve } from '@/stores/tool';
+import { useViewportStore } from '@/stores/viewport';
+import { useHistoryStore } from '@/stores/history';
 import './Toolbar.css';
 
 const TOOLS: { id: ToolType; label: string; icon: LucideIcon }[] = [
@@ -8,6 +21,13 @@ const TOOLS: { id: ToolType; label: string; icon: LucideIcon }[] = [
   { id: 'eyedropper', label: 'Eyedropper', icon: Pipette },
   { id: 'move', label: 'Move', icon: Move },
   { id: 'select', label: 'Select', icon: BoxSelect },
+];
+
+const PRESSURE_CURVES: { id: PressureCurve; label: string }[] = [
+  { id: 'linear', label: 'Linear' },
+  { id: 'soft', label: 'Soft' },
+  { id: 'hard', label: 'Hard' },
+  { id: 'sCurve', label: 'S-Curve' },
 ];
 
 export function Toolbar() {
@@ -20,7 +40,25 @@ export function Toolbar() {
     setBrushOpacity,
     brushColor,
     setBrushColor,
+    pressureCurve,
+    setPressureCurve,
   } = useToolStore();
+
+  const { scale, zoomIn, zoomOut, resetZoom } = useViewportStore();
+
+  const { canUndo, canRedo } = useHistoryStore();
+
+  const zoomPercent = Math.round(scale * 100);
+
+  const handleUndo = () => {
+    const win = window as Window & { __canvasUndo?: () => void };
+    win.__canvasUndo?.();
+  };
+
+  const handleRedo = () => {
+    const win = window as Window & { __canvasRedo?: () => void };
+    win.__canvasRedo?.();
+  };
 
   return (
     <header className="toolbar">
@@ -64,6 +102,21 @@ export function Toolbar() {
           />
           <span className="setting-value">{Math.round(brushOpacity * 100)}%</span>
         </label>
+
+        <label className="setting">
+          <span className="setting-label">Pressure</span>
+          <select
+            value={pressureCurve}
+            onChange={(e) => setPressureCurve(e.target.value as PressureCurve)}
+            className="pressure-select"
+          >
+            {PRESSURE_CURVES.map((curve) => (
+              <option key={curve.id} value={curve.id}>
+                {curve.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="toolbar-divider" />
@@ -81,11 +134,35 @@ export function Toolbar() {
 
       <div className="toolbar-spacer" />
 
+      <div className="toolbar-section zoom-controls">
+        <button onClick={() => zoomOut()} title="Zoom Out">
+          <ZoomOut size={18} strokeWidth={1.5} />
+        </button>
+        <button className="zoom-level" onClick={resetZoom} title="Reset Zoom (100%)">
+          {zoomPercent}%
+        </button>
+        <button onClick={() => zoomIn()} title="Zoom In">
+          <ZoomIn size={18} strokeWidth={1.5} />
+        </button>
+      </div>
+
+      <div className="toolbar-divider" />
+
       <div className="toolbar-section actions">
-        <button data-testid="undo-btn" disabled title="Undo">
+        <button
+          data-testid="undo-btn"
+          disabled={!canUndo()}
+          onClick={handleUndo}
+          title="Undo (Ctrl+Z)"
+        >
           <Undo2 size={18} strokeWidth={1.5} />
         </button>
-        <button data-testid="redo-btn" disabled title="Redo">
+        <button
+          data-testid="redo-btn"
+          disabled={!canRedo()}
+          onClick={handleRedo}
+          title="Redo (Ctrl+Y)"
+        >
           <Redo2 size={18} strokeWidth={1.5} />
         </button>
       </div>
