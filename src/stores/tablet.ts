@@ -122,10 +122,21 @@ export const useTabletStore = create<TabletState>((set, get) => ({
         const payload = event.payload;
 
         if (typeof payload === 'object' && 'Input' in payload) {
-          get()._setPoint(payload.Input);
+          const point = payload.Input;
+          // Debug: log pressure values occasionally
+          if (Math.random() < 0.01) {
+            console.log('[Tablet] Input event:', {
+              pressure: point.pressure,
+              x: point.x,
+              y: point.y,
+            });
+          }
+          get()._setPoint(point);
         } else if (payload === 'ProximityEnter') {
+          console.log('[Tablet] Proximity enter');
           get()._setProximity(true);
         } else if (payload === 'ProximityLeave') {
+          console.log('[Tablet] Proximity leave');
           get()._setProximity(false);
         } else if (typeof payload === 'object' && 'StatusChanged' in payload) {
           set({ status: payload.StatusChanged });

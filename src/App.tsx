@@ -1,13 +1,45 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
 import { LayerPanel } from './components/LayerPanel';
 import { TabletPanel } from './components/TabletPanel';
 import { useDocumentStore } from './stores/document';
+import { useTabletStore } from './stores/tablet';
 
 function App() {
   const [isReady, setIsReady] = useState(false);
   const initDocument = useDocumentStore((s) => s.initDocument);
+  const tabletInitializedRef = useRef(false);
+
+  // Get tablet store actions (stable references)
+  const initTablet = useTabletStore((s) => s.init);
+  const startTablet = useTabletStore((s) => s.start);
+  const cleanupTablet = useTabletStore((s) => s.cleanup);
+
+  // Initialize tablet at App level (runs once)
+  useEffect(() => {
+    const setupTablet = async () => {
+      // Use ref to prevent double initialization in StrictMode
+      if (tabletInitializedRef.current) return;
+      tabletInitializedRef.current = true;
+
+      console.log('[App] Initializing tablet backend...');
+      await initTablet({ backend: 'auto' });
+      await startTablet();
+      console.log('[App] Tablet backend ready');
+    };
+
+    setupTablet();
+
+    // Cleanup only on actual unmount (App never unmounts in normal use)
+    return () => {
+      if (tabletInitializedRef.current) {
+        console.log('[App] Cleaning up tablet backend...');
+        cleanupTablet();
+        tabletInitializedRef.current = false;
+      }
+    };
+  }, []); // Empty deps - run once on mount
 
   useEffect(() => {
     // 初始化默认文档
