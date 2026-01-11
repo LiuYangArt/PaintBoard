@@ -1,6 +1,6 @@
 //! Brush engine benchmarks
 
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use paintboard_lib::brush::{BrushEngine, BrushSettings};
 use paintboard_lib::input::RawInputPoint;
 
@@ -27,13 +27,9 @@ fn benchmark_stroke_processing(c: &mut Criterion) {
         let points = generate_stroke(*count);
         let engine = BrushEngine::new();
 
-        group.bench_with_input(
-            BenchmarkId::new("process", count),
-            &points,
-            |b, points| {
-                b.iter(|| engine.process(points))
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("process", count), &points, |b, points| {
+            b.iter(|| engine.process(points))
+        });
     }
 
     group.finish();
@@ -46,9 +42,7 @@ fn benchmark_brush_settings(c: &mut Criterion) {
 
     // Default settings
     let default_engine = BrushEngine::new();
-    group.bench_function("default", |b| {
-        b.iter(|| default_engine.process(&points))
-    });
+    group.bench_function("default", |b| b.iter(|| default_engine.process(&points)));
 
     // High spacing (fewer points generated)
     let high_spacing_engine = BrushEngine::with_settings(BrushSettings {
@@ -71,5 +65,9 @@ fn benchmark_brush_settings(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, benchmark_stroke_processing, benchmark_brush_settings);
+criterion_group!(
+    benches,
+    benchmark_stroke_processing,
+    benchmark_brush_settings
+);
 criterion_main!(benches);

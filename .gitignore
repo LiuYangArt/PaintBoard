@@ -81,3 +81,4 @@ PRN
 # Personal scripts
 run_claude_pwsh.bat
 .dev/install_dev_env.bat
+*.code-workspace

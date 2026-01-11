@@ -1,7 +1,7 @@
 //! Brush engine - processes raw input into renderable brush strokes
 
-use super::{BlendMode, BrushPoint, PressureCurve, StrokeSegment};
 use super::interpolation::{interpolate_catmull_rom, InterpolationMode};
+use super::{BlendMode, BrushPoint, PressureCurve, StrokeSegment};
 use crate::input::RawInputPoint;
 
 /// Brush settings
