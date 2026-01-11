@@ -1,4 +1,5 @@
-import { Eye, EyeOff, Plus, Trash2, Lock, Unlock } from 'lucide-react';
+import { useState } from 'react';
+import { Eye, EyeOff, Plus, Trash2, Lock, Unlock, GripVertical } from 'lucide-react';
 import { useDocumentStore, BlendMode } from '@/stores/document';
 import './LayerPanel.css';
 
@@ -16,6 +17,9 @@ const BLEND_MODES: { value: BlendMode; label: string }[] = [
 ];
 
 export function LayerPanel() {
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+
   const {
     layers,
     activeLayerId,
@@ -26,6 +30,7 @@ export function LayerPanel() {
     setLayerOpacity,
     setLayerBlendMode,
     toggleLayerLock,
+    moveLayer,
   } = useDocumentStore((s) => ({
     layers: s.layers,
     activeLayerId: s.activeLayerId,
@@ -36,9 +41,52 @@ export function LayerPanel() {
     setLayerOpacity: s.setLayerOpacity,
     setLayerBlendMode: s.setLayerBlendMode,
     toggleLayerLock: s.toggleLayerLock,
+    moveLayer: s.moveLayer,
   }));
 
   const activeLayer = layers.find((l) => l.id === activeLayerId);
+
+  // Reversed layers for display (top layer first)
+  const displayLayers = [...layers].reverse();
+
+  const handleDragStart = (e: React.DragEvent, layerId: string) => {
+    setDraggedId(layerId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', layerId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, layerId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (layerId !== draggedId) {
+      setDropTargetId(layerId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDropTargetId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetLayerId: string) => {
+    e.preventDefault();
+    setDropTargetId(null);
+    setDraggedId(null);
+
+    if (!draggedId || draggedId === targetLayerId) return;
+
+    // Find indices in the original (non-reversed) array
+    const fromIndex = layers.findIndex((l) => l.id === draggedId);
+    const toIndex = layers.findIndex((l) => l.id === targetLayerId);
+
+    if (fromIndex !== -1 && toIndex !== -1) {
+      moveLayer(draggedId, toIndex);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setDropTargetId(null);
+  };
 
   return (
     <aside className="layer-panel">
@@ -58,13 +106,23 @@ export function LayerPanel() {
         {layers.length === 0 ? (
           <div className="layer-empty">No layers</div>
         ) : (
-          [...layers].reverse().map((layer) => (
+          displayLayers.map((layer) => (
             <div
               key={layer.id}
-              className={`layer-item ${activeLayerId === layer.id ? 'active' : ''}`}
+              className={`layer-item ${activeLayerId === layer.id ? 'active' : ''} ${draggedId === layer.id ? 'dragging' : ''} ${dropTargetId === layer.id ? 'drop-target' : ''}`}
               data-testid="layer-item"
+              draggable
+              onDragStart={(e) => handleDragStart(e, layer.id)}
+              onDragOver={(e) => handleDragOver(e, layer.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, layer.id)}
+              onDragEnd={handleDragEnd}
               onClick={() => setActiveLayer(layer.id)}
             >
+              <div className="drag-handle">
+                <GripVertical size={14} />
+              </div>
+
               <button
                 className={`visibility-toggle ${layer.visible ? 'visible' : 'hidden'}`}
                 data-testid="layer-visibility-toggle"

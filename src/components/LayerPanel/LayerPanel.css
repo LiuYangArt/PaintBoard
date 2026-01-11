@@ -51,7 +51,7 @@
   padding: 8px;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s, opacity 0.1s, transform 0.1s;
 }
 
 .layer-item:hover {
@@ -60,6 +60,31 @@
 
 .layer-item.active {
   background: var(--accent);
+}
+
+.layer-item.dragging {
+  opacity: 0.5;
+}
+
+.layer-item.drop-target {
+  background: var(--bg-tertiary);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+}
+
+.layer-item.dragging .drag-handle {
+  cursor: grabbing;
 }
 
 .visibility-toggle {
