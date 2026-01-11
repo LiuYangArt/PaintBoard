@@ -4,6 +4,8 @@
 渐变工具
 文字输入工具
 
+srgb color profile / 色彩校正
+
 延迟/帧率显示
 
 release流程/github action自动打包/自动版本号
