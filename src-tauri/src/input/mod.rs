@@ -1,10 +1,19 @@
 //! Input module - handles tablet/pen input processing
 
+mod backend;
+mod pointer_backend;
 mod processor;
 mod tablet;
+pub mod wintab_backend;
+pub mod wintab_spike;
 
+pub use backend::{
+    PressureCurve, TabletBackend, TabletConfig, TabletEvent, TabletInfo, TabletStatus,
+};
+pub use pointer_backend::PointerEventBackend;
 pub use processor::InputProcessor;
 pub use tablet::TabletManager;
+pub use wintab_backend::WinTabBackend;
 
 use serde::{Deserialize, Serialize};
 

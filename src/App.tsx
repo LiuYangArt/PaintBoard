@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
 import { LayerPanel } from './components/LayerPanel';
+import { TabletPanel } from './components/TabletPanel';
 import { useDocumentStore } from './stores/document';
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
         <Canvas />
         <LayerPanel />
       </main>
+      <TabletPanel />
     </div>
   );
 }

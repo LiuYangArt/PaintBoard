@@ -38,6 +38,13 @@ pub fn run() {
             commands::create_document,
             commands::get_system_info,
             commands::process_stroke,
+            commands::run_wintab_spike,
+            commands::check_wintab_available,
+            commands::init_tablet,
+            commands::start_tablet,
+            commands::stop_tablet,
+            commands::get_tablet_status,
+            commands::push_pointer_event,
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]

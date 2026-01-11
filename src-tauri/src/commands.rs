@@ -1,8 +1,13 @@
 //! Tauri commands - IPC interface between frontend and backend
 
 use crate::brush::{BrushEngine, StrokeSegment};
-use crate::input::RawInputPoint;
-use serde::Serialize;
+use crate::input::wintab_spike::SpikeResult;
+use crate::input::{
+    PressureCurve, RawInputPoint, TabletBackend, TabletConfig, TabletInfo, TabletStatus,
+};
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex, OnceLock};
+use tauri::{AppHandle, Emitter};
 
 /// Document information returned after creation
 #[derive(Debug, Clone, Serialize)]
@@ -79,6 +84,269 @@ fn uuid_simple() -> String {
         .unwrap_or_default();
 
     format!("{:x}{:x}", now.as_secs(), now.subsec_nanos())
+}
+
+/// Run WinTab spike test to verify tablet integration
+#[tauri::command]
+pub fn run_wintab_spike(hwnd: Option<isize>) -> SpikeResult {
+    use crate::input::wintab_spike::spike;
+
+    tracing::info!("Running WinTab spike test...");
+    spike::run_wintab_spike(hwnd.unwrap_or(0))
+}
+
+/// Check if WinTab is available
+#[tauri::command]
+pub fn check_wintab_available() -> bool {
+    use crate::input::wintab_spike::spike;
+
+    spike::check_wintab_available()
+}
+
+// ============================================================================
+// Tablet Input System
+// ============================================================================
+
+/// Global tablet manager state
+static TABLET_STATE: OnceLock<Arc<Mutex<TabletState>>> = OnceLock::new();
+
+/// Backend type enum for serialization
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackendType {
+    WinTab,
+    PointerEvent,
+    Auto,
+}
+
+/// Tablet state holding the active backend
+struct TabletState {
+    backend_type: BackendType,
+    wintab: Option<crate::input::WinTabBackend>,
+    pointer: Option<crate::input::PointerEventBackend>,
+    config: TabletConfig,
+    app_handle: Option<AppHandle>,
+    emitter_running: bool,
+}
+
+impl TabletState {
+    fn new() -> Self {
+        Self {
+            backend_type: BackendType::Auto,
+            wintab: None,
+            pointer: None,
+            config: TabletConfig::default(),
+            app_handle: None,
+            emitter_running: false,
+        }
+    }
+
+    fn active_backend(&mut self) -> Option<&mut dyn TabletBackend> {
+        match self.backend_type {
+            BackendType::WinTab => self.wintab.as_mut().map(|b| b as &mut dyn TabletBackend),
+            BackendType::PointerEvent => self.pointer.as_mut().map(|b| b as &mut dyn TabletBackend),
+            BackendType::Auto => {
+                // Prefer WinTab if available
+                if self.wintab.is_some() {
+                    self.wintab.as_mut().map(|b| b as &mut dyn TabletBackend)
+                } else {
+                    self.pointer.as_mut().map(|b| b as &mut dyn TabletBackend)
+                }
+            }
+        }
+    }
+}
+
+fn get_tablet_state() -> Arc<Mutex<TabletState>> {
+    TABLET_STATE
+        .get_or_init(|| Arc::new(Mutex::new(TabletState::new())))
+        .clone()
+}
+
+/// Tablet status response for frontend
+#[derive(Debug, Clone, Serialize)]
+pub struct TabletStatusResponse {
+    pub status: TabletStatus,
+    pub backend: String,
+    pub info: Option<TabletInfo>,
+}
+
+/// Initialize tablet input system
+#[tauri::command]
+pub fn init_tablet(
+    app: AppHandle,
+    backend: Option<BackendType>,
+    polling_rate: Option<u32>,
+    pressure_curve: Option<String>,
+) -> Result<TabletStatusResponse, String> {
+    let state = get_tablet_state();
+    let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    // Store app handle for event emission
+    state.app_handle = Some(app);
+
+    // Configure
+    state.config.polling_rate_hz = polling_rate.unwrap_or(200);
+    state.config.pressure_curve = match pressure_curve.as_deref() {
+        Some("soft") => PressureCurve::Soft,
+        Some("hard") => PressureCurve::Hard,
+        Some("scurve") => PressureCurve::SCurve,
+        _ => PressureCurve::Linear,
+    };
+
+    let requested_backend = backend.unwrap_or(BackendType::Auto);
+    state.backend_type = requested_backend;
+
+    // Try WinTab first if requested or auto
+    if matches!(requested_backend, BackendType::WinTab | BackendType::Auto) {
+        let mut wintab = crate::input::WinTabBackend::new();
+        if wintab.init(&state.config).is_ok() {
+            state.wintab = Some(wintab);
+            state.backend_type = BackendType::WinTab;
+            tracing::info!("[Tablet] Initialized WinTab backend");
+        }
+    }
+
+    // Fall back to PointerEvent if WinTab not available or specifically requested
+    if state.wintab.is_none() || matches!(requested_backend, BackendType::PointerEvent) {
+        let mut pointer = crate::input::PointerEventBackend::new();
+        if pointer.init(&state.config).is_ok() {
+            state.pointer = Some(pointer);
+            if state.wintab.is_none() {
+                state.backend_type = BackendType::PointerEvent;
+            }
+            tracing::info!("[Tablet] Initialized PointerEvent backend");
+        }
+    }
+
+    // Get status from active backend
+    let (status, backend_name, info) = if let Some(backend) = state.active_backend() {
+        (
+            backend.status(),
+            backend.name().to_string(),
+            backend.info().cloned(),
+        )
+    } else {
+        return Err("No tablet backend available".to_string());
+    };
+
+    Ok(TabletStatusResponse {
+        status,
+        backend: backend_name,
+        info,
+    })
+}
+
+/// Start tablet input streaming
+#[tauri::command]
+pub fn start_tablet() -> Result<(), String> {
+    let state = get_tablet_state();
+    let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    if let Some(backend) = state.active_backend() {
+        backend.start()?;
+    }
+
+    // Start event emitter thread if not running
+    if !state.emitter_running {
+        if let Some(app) = state.app_handle.clone() {
+            state.emitter_running = true;
+            let state_clone = get_tablet_state();
+
+            std::thread::spawn(move || {
+                tracing::info!("[Tablet] Event emitter thread started");
+                let mut events = Vec::with_capacity(64);
+
+                loop {
+                    let should_continue = {
+                        let Ok(mut state) = state_clone.lock() else {
+                            break;
+                        };
+
+                        if !state.emitter_running {
+                            break;
+                        }
+
+                        if let Some(backend) = state.active_backend() {
+                            let count = backend.poll(&mut events);
+                            if count > 0 {
+                                // Emit events to frontend
+                                for event in events.drain(..) {
+                                    let _ = app.emit("tablet-event", &event);
+                                }
+                            }
+                        }
+                        true
+                    };
+
+                    if !should_continue {
+                        break;
+                    }
+
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+
+                tracing::info!("[Tablet] Event emitter thread stopped");
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Stop tablet input streaming
+#[tauri::command]
+pub fn stop_tablet() -> Result<(), String> {
+    let state = get_tablet_state();
+    let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    state.emitter_running = false;
+
+    if let Some(backend) = state.active_backend() {
+        backend.stop();
+    }
+
+    Ok(())
+}
+
+/// Get current tablet status
+#[tauri::command]
+pub fn get_tablet_status() -> Result<TabletStatusResponse, String> {
+    let state = get_tablet_state();
+    let mut state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    if let Some(backend) = state.active_backend() {
+        Ok(TabletStatusResponse {
+            status: backend.status(),
+            backend: backend.name().to_string(),
+            info: backend.info().cloned(),
+        })
+    } else {
+        Ok(TabletStatusResponse {
+            status: TabletStatus::Disconnected,
+            backend: "none".to_string(),
+            info: None,
+        })
+    }
+}
+
+/// Push pointer event from frontend (for PointerEvent backend)
+#[tauri::command]
+pub fn push_pointer_event(
+    x: f32,
+    y: f32,
+    pressure: f32,
+    tilt_x: f32,
+    tilt_y: f32,
+) -> Result<(), String> {
+    let state = get_tablet_state();
+    let state = state.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+    if let Some(pointer) = &state.pointer {
+        pointer.push_input(x, y, pressure, tilt_x, tilt_y);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
