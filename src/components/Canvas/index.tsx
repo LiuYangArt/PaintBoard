@@ -343,12 +343,19 @@ export function Canvas() {
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      // 平移模式
+      // 获取所有合并事件（包括被浏览器合并的中间事件）
+      // 在 Release 模式下，浏览器会更激进地合并事件，导致采样点不足
+      const coalescedEvents = (e.nativeEvent as PointerEvent).getCoalescedEvents?.() ?? [
+        e.nativeEvent,
+      ];
+
+      // 平移模式：只使用最后一个事件
       if (isPanning && panStartRef.current) {
-        const deltaX = e.clientX - panStartRef.current.x;
-        const deltaY = e.clientY - panStartRef.current.y;
+        const lastEvent = coalescedEvents[coalescedEvents.length - 1] ?? e.nativeEvent;
+        const deltaX = lastEvent.clientX - panStartRef.current.x;
+        const deltaY = lastEvent.clientY - panStartRef.current.y;
         pan(deltaX, deltaY);
-        panStartRef.current = { x: e.clientX, y: e.clientY };
+        panStartRef.current = { x: lastEvent.clientX, y: lastEvent.clientY };
         return;
       }
 
@@ -362,73 +369,76 @@ export function Canvas() {
       const tabletState = useTabletStore.getState();
       const isWinTabActive = tabletState.isStreaming && tabletState.backend === 'WinTab';
 
-      // 始终使用 PointerEvent 的坐标（它们是准确的屏幕坐标）
-      const canvasX = (e.clientX - rect.left) / scale;
-      const canvasY = (e.clientY - rect.top) / scale;
+      // 遍历所有合并事件，恢复完整输入轨迹
+      for (const evt of coalescedEvents) {
+        // 始终使用 PointerEvent 的坐标（它们是准确的屏幕坐标）
+        const canvasX = (evt.clientX - rect.left) / scale;
+        const canvasY = (evt.clientY - rect.top) / scale;
 
-      // 获取压力数据
-      let pressure: number;
-      let tiltX: number;
-      let tiltY: number;
+        // 获取压力数据
+        let pressure: number;
+        let tiltX: number;
+        let tiltY: number;
 
-      if (isWinTabActive) {
-        // WinTab 模式：从缓冲区获取最新的压力数据
-        // 消费所有缓冲的点，使用最后一个有效压力值
-        const bufferedPoints = drainPointBuffer();
-        let latestPressure = 0;
-        let latestTiltX = 0;
-        let latestTiltY = 0;
+        if (isWinTabActive) {
+          // WinTab 模式：从缓冲区获取最新的压力数据
+          // 消费所有缓冲的点，使用最后一个有效压力值
+          const bufferedPoints = drainPointBuffer();
+          let latestPressure = 0;
+          let latestTiltX = 0;
+          let latestTiltY = 0;
 
-        // 找到最后一个有压力的点
-        for (let i = bufferedPoints.length - 1; i >= 0; i--) {
-          const p = bufferedPoints[i];
-          if (p && p.pressure > 0) {
-            latestPressure = p.pressure;
-            latestTiltX = p.tilt_x;
-            latestTiltY = p.tilt_y;
-            break;
+          // 找到最后一个有压力的点
+          for (let i = bufferedPoints.length - 1; i >= 0; i--) {
+            const p = bufferedPoints[i];
+            if (p && p.pressure > 0) {
+              latestPressure = p.pressure;
+              latestTiltX = p.tilt_x;
+              latestTiltY = p.tilt_y;
+              break;
+            }
           }
-        }
 
-        // 如果缓冲区没有有效数据，使用 currentPoint
-        if (
-          latestPressure === 0 &&
-          tabletState.currentPoint &&
-          tabletState.currentPoint.pressure > 0
-        ) {
-          latestPressure = tabletState.currentPoint.pressure;
-          latestTiltX = tabletState.currentPoint.tilt_x;
-          latestTiltY = tabletState.currentPoint.tilt_y;
-        }
+          // 如果缓冲区没有有效数据，使用 currentPoint
+          if (
+            latestPressure === 0 &&
+            tabletState.currentPoint &&
+            tabletState.currentPoint.pressure > 0
+          ) {
+            latestPressure = tabletState.currentPoint.pressure;
+            latestTiltX = tabletState.currentPoint.tilt_x;
+            latestTiltY = tabletState.currentPoint.tilt_y;
+          }
 
-        // 如果 WinTab 没有有效压力，回退到 PointerEvent
-        if (latestPressure > 0) {
-          pressure = latestPressure;
-          tiltX = latestTiltX;
-          tiltY = latestTiltY;
+          // 如果 WinTab 没有有效压力，回退到 PointerEvent
+          if (latestPressure > 0) {
+            pressure = latestPressure;
+            tiltX = latestTiltX;
+            tiltY = latestTiltY;
+          } else {
+            pressure = evt.pressure > 0 ? evt.pressure : 0.5;
+            tiltX = (evt as PointerEvent).tiltX ?? 0;
+            tiltY = (evt as PointerEvent).tiltY ?? 0;
+          }
         } else {
-          pressure = e.pressure > 0 ? e.pressure : 0.5;
-          tiltX = e.tiltX ?? 0;
-          tiltY = e.tiltY ?? 0;
+          // PointerEvent 模式
+          pressure = evt.pressure > 0 ? evt.pressure : 0.5;
+          tiltX = (evt as PointerEvent).tiltX ?? 0;
+          tiltY = (evt as PointerEvent).tiltY ?? 0;
         }
-      } else {
-        // PointerEvent 模式
-        pressure = e.pressure > 0 ? e.pressure : 0.5;
-        tiltX = e.tiltX ?? 0;
-        tiltY = e.tiltY ?? 0;
-      }
 
-      const point: Point = {
-        x: canvasX,
-        y: canvasY,
-        pressure,
-        tiltX,
-        tiltY,
-      };
+        const point: Point = {
+          x: canvasX,
+          y: canvasY,
+          pressure,
+          tiltX,
+          tiltY,
+        };
 
-      const interpolatedPoints = strokeBufferRef.current.addPoint(point);
-      if (interpolatedPoints.length > 0) {
-        drawPoints(interpolatedPoints);
+        const interpolatedPoints = strokeBufferRef.current.addPoint(point);
+        if (interpolatedPoints.length > 0) {
+          drawPoints(interpolatedPoints);
+        }
       }
     },
     [isPanning, pan, drawPoints, scale]
