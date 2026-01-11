@@ -89,6 +89,7 @@ Defined in `src-tauri/src/commands.rs`:
 - Path alias: `@/*` → `./src/*`
 - State management: Zustand with Immer middleware
 - Strict mode enabled, no `any`
+- **Icons**: Use `lucide-react` for all icons (size={18} strokeWidth={1.5} for toolbar, smaller for inline)
 
 ### Rust
 - Clippy lints: `unwrap_used` and `expect_used` are warnings

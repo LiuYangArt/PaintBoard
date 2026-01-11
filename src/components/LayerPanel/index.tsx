@@ -1,3 +1,4 @@
+import { Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import { useDocumentStore } from '@/stores/document';
 import './LayerPanel.css';
 
@@ -22,7 +23,7 @@ export function LayerPanel() {
           onClick={() => addLayer({ name: `Layer ${layers.length + 1}`, type: 'raster' })}
           title="Add Layer"
         >
-          +
+          <Plus size={16} strokeWidth={2} />
         </button>
       </header>
 
@@ -46,7 +47,7 @@ export function LayerPanel() {
                 }}
                 title={layer.visible ? 'Hide Layer' : 'Show Layer'}
               >
-                {layer.visible ? '👁️' : '👁️‍🗨️'}
+                {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
               </button>
 
               <div className="layer-thumbnail" />
@@ -63,7 +64,7 @@ export function LayerPanel() {
                 }}
                 title="Delete Layer"
               >
-                ×
+                <Trash2 size={14} />
               </button>
             </div>
           ))

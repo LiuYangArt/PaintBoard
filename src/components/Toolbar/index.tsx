@@ -1,12 +1,13 @@
+import { Brush, Eraser, Pipette, Move, BoxSelect, Undo2, Redo2, LucideIcon } from 'lucide-react';
 import { useToolStore, ToolType } from '@/stores/tool';
 import './Toolbar.css';
 
-const TOOLS: { id: ToolType; label: string; icon: string }[] = [
-  { id: 'brush', label: 'Brush', icon: '🖌️' },
-  { id: 'eraser', label: 'Eraser', icon: '🧹' },
-  { id: 'eyedropper', label: 'Eyedropper', icon: '💧' },
-  { id: 'move', label: 'Move', icon: '✋' },
-  { id: 'select', label: 'Select', icon: '⬚' },
+const TOOLS: { id: ToolType; label: string; icon: LucideIcon }[] = [
+  { id: 'brush', label: 'Brush', icon: Brush },
+  { id: 'eraser', label: 'Eraser', icon: Eraser },
+  { id: 'eyedropper', label: 'Eyedropper', icon: Pipette },
+  { id: 'move', label: 'Move', icon: Move },
+  { id: 'select', label: 'Select', icon: BoxSelect },
 ];
 
 export function Toolbar() {
@@ -31,7 +32,7 @@ export function Toolbar() {
             onClick={() => setTool(tool.id)}
             title={tool.label}
           >
-            <span className="tool-icon">{tool.icon}</span>
+            <tool.icon size={18} strokeWidth={1.5} />
           </button>
         ))}
       </div>
@@ -81,11 +82,11 @@ export function Toolbar() {
       <div className="toolbar-spacer" />
 
       <div className="toolbar-section actions">
-        <button data-testid="undo-btn" disabled>
-          Undo
+        <button data-testid="undo-btn" disabled title="Undo">
+          <Undo2 size={18} strokeWidth={1.5} />
         </button>
-        <button data-testid="redo-btn" disabled>
-          Redo
+        <button data-testid="redo-btn" disabled title="Redo">
+          <Redo2 size={18} strokeWidth={1.5} />
         </button>
       </div>
     </header>
