@@ -313,7 +313,7 @@ impl TabletBackend for WinTabBackend {
             );
 
             let mut was_in_proximity = false;
-            let mut zero_pressure_streak: u32 = 0;
+            // let mut zero_pressure_streak: u32 = 0;
             let mut loop_count: u64 = 0;
 
             while running.load(Ordering::SeqCst) {
@@ -347,15 +347,15 @@ impl TabletBackend for WinTabBackend {
                     for packet in packets.iter().take(count as usize) {
                         // Track zero pressure streaks for diagnostics
                         if packet.pkNormalPressure == 0 {
-                            zero_pressure_streak += 1;
+                            // zero_pressure_streak += 1;
                         } else {
-                            if zero_pressure_streak > 50 {
-                                tracing::warn!(
-                                    "[WinTab] Recovered from {} zero-pressure packets",
-                                    zero_pressure_streak
-                                );
-                            }
-                            zero_pressure_streak = 0;
+                            // if zero_pressure_streak > 50 {
+                            //     tracing::warn!(
+                            //         "[WinTab] Recovered from {} zero-pressure packets",
+                            //         zero_pressure_streak
+                            //     );
+                            // }
+                            // zero_pressure_streak = 0;
                         }
 
                         // Check proximity from pkStatus (TPS::PROXIMITY = 0x01)
