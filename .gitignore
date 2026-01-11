@@ -40,6 +40,7 @@ coverage/
 
 # Tauri
 src-tauri/Cargo.lock
+src-tauri/gen/
 
 # Rust
 **/*.rs.bk
@@ -76,3 +77,7 @@ PRN
 # Local development overrides
 *.local
 .local/
+
+# Personal scripts
+run_claude_pwsh.bat
+.dev/install_dev_env.bat
