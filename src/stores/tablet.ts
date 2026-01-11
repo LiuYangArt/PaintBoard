@@ -138,6 +138,8 @@ export const useTabletStore = create<TabletState>((set, get) => ({
         } else if (payload === 'ProximityLeave') {
           console.log('[Tablet] Proximity leave');
           get()._setProximity(false);
+          // Clear currentPoint so next stroke starts fresh with new WinTab data
+          set({ currentPoint: null });
         } else if (typeof payload === 'object' && 'StatusChanged' in payload) {
           set({ status: payload.StatusChanged });
         }

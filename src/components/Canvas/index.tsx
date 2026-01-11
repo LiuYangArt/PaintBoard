@@ -292,26 +292,12 @@ export function Canvas() {
       const container = containerRef.current;
       if (!container) return;
 
-      // 同步获取最新的 WinTab 数据（避免 React 状态快照延迟）
-      const tabletState = useTabletStore.getState();
-      const tabletPoint = tabletState.currentPoint;
-      const isWinTabActive = tabletState.isStreaming && tabletState.backend === 'WinTab';
-
-      // 使用 WinTab 压感数据（如果可用且有效），否则回退到 PointerEvent
-      // WinTab 数据有效的条件：正在流式传输 + 有数据点 + 压力 > 0
-      const useWinTab = isWinTabActive && tabletPoint !== null && tabletPoint.pressure > 0;
-      const pressure = useWinTab ? tabletPoint.pressure : e.pressure > 0 ? e.pressure : 0.5;
-      const tiltX = useWinTab ? tabletPoint.tilt_x : (e.tiltX ?? 0);
-      const tiltY = useWinTab ? tabletPoint.tilt_y : (e.tiltY ?? 0);
-
-      // 调试：输出压感数据
-      console.log('[Canvas] PointerDown:', {
-        pointerType: e.pointerType,
-        pointerPressure: e.pressure,
-        wintabPressure: tabletPoint?.pressure,
-        finalPressure: pressure,
-        usingWinTab: useWinTab,
-      });
+      // PointerDown 时刻，WinTab 数据可能还未通过 Tauri 事件到达前端
+      // 因此优先使用 PointerEvent.pressure（Windows Ink 提供的压感）
+      // WinTab 数据将在后续的 PointerMove 中使用
+      const pressure = e.pressure > 0 ? e.pressure : 0.5;
+      const tiltX = e.tiltX ?? 0;
+      const tiltY = e.tiltY ?? 0;
 
       // 平移模式
       if (spacePressed) {
@@ -365,11 +351,15 @@ export function Canvas() {
       const tabletPoint = tabletState.currentPoint;
       const isWinTabActive = tabletState.isStreaming && tabletState.backend === 'WinTab';
 
-      // 使用 WinTab 压感数据（如果可用且有效），否则回退到 PointerEvent
-      const useWinTab = isWinTabActive && tabletPoint !== null && tabletPoint.pressure > 0;
-      const pressure = useWinTab ? tabletPoint.pressure : e.pressure > 0 ? e.pressure : 0.5;
-      const tiltX = useWinTab ? tabletPoint.tilt_x : (e.tiltX ?? 0);
-      const tiltY = useWinTab ? tabletPoint.tilt_y : (e.tiltY ?? 0);
+      // WinTab 模式：只要后端在运行就使用其压力数据
+      // 不依赖 Proximity 事件，因为某些驱动不可靠
+      // 当 WinTab 报告 pressure=0 时，回退到 PointerEvent
+      const useWinTabPressure = isWinTabActive && tabletPoint !== null && tabletPoint.pressure > 0;
+
+      // 压感数据优先级：WinTab有效压力 > PointerEvent压力 > 默认值0.5
+      const pressure = useWinTabPressure ? tabletPoint.pressure : e.pressure > 0 ? e.pressure : 0.5;
+      const tiltX = useWinTabPressure ? tabletPoint.tilt_x : (e.tiltX ?? 0);
+      const tiltY = useWinTabPressure ? tabletPoint.tilt_y : (e.tiltY ?? 0);
 
       const rect = canvas.getBoundingClientRect();
       // 转换为画布坐标（考虑缩放）

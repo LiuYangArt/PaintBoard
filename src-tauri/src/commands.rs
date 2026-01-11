@@ -210,7 +210,7 @@ pub fn init_tablet(
             match window.window_handle() {
                 Ok(handle) => match handle.as_raw() {
                     RawWindowHandle::Win32(win32_handle) => {
-                        let hwnd = win32_handle.hwnd.get() as isize;
+                        let hwnd = win32_handle.hwnd.get();
                         tracing::info!("[Tablet] Got main window HWND: {}", hwnd);
                         Some(hwnd)
                     }
