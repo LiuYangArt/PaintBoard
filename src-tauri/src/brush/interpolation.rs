@@ -123,8 +123,20 @@ mod tests {
         assert!(result.len() > points.len());
 
         // First and last points should be preserved
-        assert!((result.first().unwrap().x - points.first().unwrap().x).abs() < 0.01);
-        assert!((result.last().unwrap().x - points.last().unwrap().x).abs() < 0.01);
+        let Some(result_first) = result.first() else {
+            panic!("result should have first point");
+        };
+        let Some(result_last) = result.last() else {
+            panic!("result should have last point");
+        };
+        let Some(points_first) = points.first() else {
+            panic!("points should have first point");
+        };
+        let Some(points_last) = points.last() else {
+            panic!("points should have last point");
+        };
+        assert!((result_first.x - points_first.x).abs() < 0.01);
+        assert!((result_last.x - points_last.x).abs() < 0.01);
     }
 
     #[test]

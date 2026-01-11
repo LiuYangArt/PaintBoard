@@ -90,7 +90,9 @@ mod tests {
         let result = create_document(1920, 1080, 72).await;
         assert!(result.is_ok());
 
-        let doc = result.unwrap();
+        let Ok(doc) = result else {
+            panic!("create_document should succeed");
+        };
         assert_eq!(doc.width, 1920);
         assert_eq!(doc.height, 1080);
         assert_eq!(doc.dpi, 72);

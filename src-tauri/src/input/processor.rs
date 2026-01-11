@@ -140,7 +140,9 @@ mod tests {
         let predicted = processor.predict_next();
         assert!(predicted.is_some());
 
-        let p = predicted.unwrap();
+        let Some(p) = predicted else {
+            panic!("prediction should exist");
+        };
         assert_eq!(p.x, 20.0);
         assert_eq!(p.y, 20.0);
     }
