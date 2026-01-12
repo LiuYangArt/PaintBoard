@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import { Eye, EyeOff, Plus, Trash2, Lock, Unlock, GripVertical, Eraser, Copy } from 'lucide-react';
 import { useDocumentStore, BlendMode } from '@/stores/document';
 import './LayerPanel.css';
@@ -206,79 +206,24 @@ export function LayerPanel(): JSX.Element {
           <div className="layer-empty">No layers</div>
         ) : (
           displayLayers.map((layer) => (
-            <div
+            <LayerItem
               key={layer.id}
-              className={`layer-item ${activeLayerId === layer.id ? 'active' : ''} ${
-                draggedId === layer.id ? 'dragging' : ''
-              } ${dropTargetId === layer.id ? 'drop-target' : ''}`}
-              data-testid="layer-item"
-              draggable
-              onDragStart={(e) => handleDragStart(e, layer.id)}
-              onDragOver={(e) => handleDragOver(e, layer.id)}
+              layer={layer}
+              isActive={activeLayerId === layer.id}
+              isDragging={draggedId === layer.id}
+              isDropTarget={dropTargetId === layer.id}
+              thumbDimensions={{ width: thumbWidth, height: thumbHeight }}
+              onActivate={setActiveLayer}
+              onToggleVisibility={toggleLayerVisibility}
+              onToggleLock={toggleLayerLock}
+              onRemove={removeLayer}
+              onContextMenu={handleContextMenu}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
               onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, layer.id)}
               onDragEnd={handleDragEnd}
-              onClick={() => setActiveLayer(layer.id)}
-              onContextMenu={(e) => handleContextMenu(e, layer.id)}
-            >
-              <div className="drag-handle" draggable={false}>
-                <GripVertical size={14} />
-              </div>
-
-              <button
-                className={`visibility-toggle ${layer.visible ? 'visible' : 'hidden'}`}
-                data-testid="layer-visibility-toggle"
-                draggable={false}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleLayerVisibility(layer.id);
-                }}
-                title={layer.visible ? 'Hide Layer' : 'Show Layer'}
-              >
-                {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-              </button>
-
-              <div
-                className="layer-thumbnail"
-                draggable={false}
-                style={{
-                  width: thumbWidth,
-                  height: thumbHeight,
-                }}
-              >
-                {layer.thumbnail && (
-                  <img src={layer.thumbnail} alt={layer.name} draggable={false} />
-                )}
-              </div>
-
-              <span className="layer-name" data-testid="layer-name" draggable={false}>
-                {layer.name}
-              </span>
-
-              <button
-                className="delete-layer-btn"
-                draggable={false}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeLayer(layer.id);
-                }}
-                title="Delete Layer"
-              >
-                <Trash2 size={14} />
-              </button>
-
-              <button
-                className={`lock-toggle ${layer.locked ? 'locked' : ''}`}
-                draggable={false}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleLayerLock(layer.id);
-                }}
-                title={layer.locked ? 'Unlock Layer' : 'Lock Layer'}
-              >
-                {layer.locked ? <Lock size={14} /> : <Unlock size={14} />}
-              </button>
-            </div>
+            />
           ))
         )}
       </div>
@@ -343,6 +288,121 @@ export function LayerPanel(): JSX.Element {
     </aside>
   );
 }
+
+interface LayerItemProps {
+  layer: {
+    id: string;
+    name: string;
+    visible: boolean;
+    locked: boolean;
+    thumbnail?: string;
+  };
+  isActive: boolean;
+  isDragging: boolean;
+  isDropTarget: boolean;
+  thumbDimensions: { width: number; height: number };
+  onActivate: (id: string) => void;
+  onToggleVisibility: (id: string) => void;
+  onToggleLock: (id: string) => void;
+  onRemove: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent, id: string) => void;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragOver: (e: React.DragEvent, id: string) => void;
+  onDrop: (e: React.DragEvent, id: string) => void;
+  onDragLeave: () => void;
+  onDragEnd: () => void;
+}
+
+const LayerItem = memo(function LayerItem({
+  layer,
+  isActive,
+  isDragging,
+  isDropTarget,
+  thumbDimensions,
+  onActivate,
+  onToggleVisibility,
+  onToggleLock,
+  onRemove,
+  onContextMenu,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragLeave,
+  onDragEnd,
+}: LayerItemProps) {
+  return (
+    <div
+      className={`layer-item ${isActive ? 'active' : ''} ${
+        isDragging ? 'dragging' : ''
+      } ${isDropTarget ? 'drop-target' : ''}`}
+      data-testid="layer-item"
+      draggable
+      onDragStart={(e) => onDragStart(e, layer.id)}
+      onDragOver={(e) => onDragOver(e, layer.id)}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => onDrop(e, layer.id)}
+      onDragEnd={onDragEnd}
+      onClick={() => onActivate(layer.id)}
+      onContextMenu={(e) => onContextMenu(e, layer.id)}
+    >
+      <div className="drag-handle" draggable={false}>
+        <GripVertical size={14} />
+      </div>
+
+      <button
+        className={`visibility-toggle ${layer.visible ? 'visible' : 'hidden'}`}
+        data-testid="layer-visibility-toggle"
+        draggable={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleVisibility(layer.id);
+        }}
+        title={layer.visible ? 'Hide Layer' : 'Show Layer'}
+      >
+        {layer.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+      </button>
+
+      <div
+        className="layer-thumbnail"
+        draggable={false}
+        style={{
+          width: thumbDimensions.width,
+          height: thumbDimensions.height,
+        }}
+      >
+        {layer.thumbnail && <img src={layer.thumbnail} alt={layer.name} draggable={false} />}
+      </div>
+
+      <span className="layer-name" data-testid="layer-name" draggable={false}>
+        {layer.name}
+      </span>
+
+      <button
+        className="delete-layer-btn"
+        draggable={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(layer.id);
+        }}
+        title="Delete Layer"
+      >
+        <Trash2 size={14} />
+      </button>
+
+      <button
+        className={`lock-toggle ${layer.locked ? 'locked' : ''}`}
+        draggable={false}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleLock(layer.id);
+        }}
+        title={layer.locked ? 'Unlock Layer' : 'Lock Layer'}
+      >
+        {layer.locked ? <Lock size={14} /> : <Unlock size={14} />}
+      </button>
+    </div>
+  );
+});
 
 const MAX_THUMB_HEIGHT = 32;
 const MAX_THUMB_WIDTH = 80;
