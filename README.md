@@ -8,7 +8,7 @@
 
 ## 下载
 
-在Release中下载
+在Release中下载最新的安装包 [https://github.com/LiuYangArt/PaintBoard/releases/](https://github.com/LiuYangArt/PaintBoard/releases/)
 
 ## 特性
 
