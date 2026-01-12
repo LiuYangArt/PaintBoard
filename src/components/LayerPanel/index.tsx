@@ -195,7 +195,13 @@ export function LayerPanel(): JSX.Element {
         </div>
       </header>
 
-      <div className="layer-list">
+      <div
+        className="layer-list"
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }}
+      >
         {layers.length === 0 ? (
           <div className="layer-empty">No layers</div>
         ) : (
@@ -215,13 +221,14 @@ export function LayerPanel(): JSX.Element {
               onClick={() => setActiveLayer(layer.id)}
               onContextMenu={(e) => handleContextMenu(e, layer.id)}
             >
-              <div className="drag-handle">
+              <div className="drag-handle" draggable={false}>
                 <GripVertical size={14} />
               </div>
 
               <button
                 className={`visibility-toggle ${layer.visible ? 'visible' : 'hidden'}`}
                 data-testid="layer-visibility-toggle"
+                draggable={false}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleLayerVisibility(layer.id);
@@ -233,6 +240,7 @@ export function LayerPanel(): JSX.Element {
 
               <div
                 className="layer-thumbnail"
+                draggable={false}
                 style={{
                   width: thumbWidth,
                   height: thumbHeight,
@@ -243,12 +251,13 @@ export function LayerPanel(): JSX.Element {
                 )}
               </div>
 
-              <span className="layer-name" data-testid="layer-name">
+              <span className="layer-name" data-testid="layer-name" draggable={false}>
                 {layer.name}
               </span>
 
               <button
                 className="delete-layer-btn"
+                draggable={false}
                 onClick={(e) => {
                   e.stopPropagation();
                   removeLayer(layer.id);
@@ -260,6 +269,7 @@ export function LayerPanel(): JSX.Element {
 
               <button
                 className={`lock-toggle ${layer.locked ? 'locked' : ''}`}
+                draggable={false}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleLayerLock(layer.id);
