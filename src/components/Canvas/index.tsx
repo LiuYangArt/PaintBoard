@@ -356,117 +356,6 @@ export function Canvas() {
     compositeAndRender();
   }, [layers, compositeAndRender]);
 
-  // 键盘事件：空格键平移 + 撤销/重做 + 笔刷大小 + Alt取色
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Space for panning
-      if (e.code === 'Space' && !e.repeat) {
-        e.preventDefault();
-        setSpacePressed(true);
-        return;
-      }
-
-      // Alt for eyedropper (temporary tool switch)
-      if (e.code === 'AltLeft' || e.code === 'AltRight') {
-        if (!e.repeat && !altPressed) {
-          e.preventDefault();
-          setAltPressed(true);
-          previousToolRef.current = currentTool;
-          setTool('eyedropper');
-        }
-        return;
-      }
-
-      // Zoom tool shortcut
-      if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        // If not already on zoom tool, switch to it based on user preference
-        if (currentTool !== 'zoom') {
-          // Toggle or temporary switch logic can be refined here
-          setTool('zoom');
-        } else {
-          // Optional: press Z again to toggle back? For now just stay on zoom.
-          // Or could go back to previous tool? Let's just switch to zoom.
-        }
-        return;
-      }
-
-      // Brush/eraser size: [ to decrease, ] to increase
-      if (e.code === 'BracketLeft') {
-        e.preventDefault();
-        const step = e.shiftKey ? 10 : 5;
-        setCurrentSize(currentSize - step);
-        return;
-      }
-      if (e.code === 'BracketRight') {
-        e.preventDefault();
-        const step = e.shiftKey ? 10 : 5;
-        setCurrentSize(currentSize + step);
-        return;
-      }
-
-      // Tool switching: B for brush, E for eraser
-      if (e.code === 'KeyB' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        setTool('brush');
-        return;
-      }
-      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        setTool('eraser');
-        return;
-      }
-
-      // Ctrl+Z for undo
-      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-        return;
-      }
-
-      // Ctrl+Y or Ctrl+Shift+Z for redo
-      if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey))) {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        setSpacePressed(false);
-        setIsPanning(false);
-        panStartRef.current = null;
-      }
-
-      // Release Alt: restore previous tool
-      if (e.code === 'AltLeft' || e.code === 'AltRight') {
-        setAltPressed(false);
-        if (previousToolRef.current) {
-          setTool(previousToolRef.current as ToolType);
-          previousToolRef.current = null;
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [
-    setIsPanning,
-    handleUndo,
-    handleRedo,
-    altPressed,
-    currentTool,
-    setTool,
-    currentSize,
-    setCurrentSize,
-  ]);
-
   // 鼠标滚轮缩放
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -818,6 +707,47 @@ export function Canvas() {
     [isPanning, pan, drawPoints, scale, setScale, currentTool, processBrushPointWithConfig]
   );
 
+  // Finish the current stroke properly (used by PointerUp and Alt key)
+  const finishCurrentStroke = useCallback(() => {
+    if (!isDrawingRef.current) return;
+
+    // 清理 WinTab 缓冲区
+    clearPointBuffer();
+
+    // For brush tool, composite stroke buffer to layer with opacity ceiling
+    if (currentTool === 'brush') {
+      const layerCtx = getActiveLayerCtx();
+      if (layerCtx) {
+        endBrushStroke(layerCtx, brushOpacity);
+      }
+      compositeAndRender();
+    } else {
+      // For eraser, use the legacy stroke buffer
+      const remainingPoints = strokeBufferRef.current.finish();
+      if (remainingPoints.length > 0) {
+        drawPoints(remainingPoints);
+      }
+    }
+
+    // Save state to history after stroke completes
+    saveToHistory();
+    if (activeLayerId) {
+      updateThumbnail(activeLayerId);
+    }
+
+    isDrawingRef.current = false;
+  }, [
+    currentTool,
+    getActiveLayerCtx,
+    brushOpacity,
+    endBrushStroke,
+    compositeAndRender,
+    drawPoints,
+    saveToHistory,
+    activeLayerId,
+    updateThumbnail,
+  ]);
+
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
       // 结束平移
@@ -844,49 +774,128 @@ export function Canvas() {
         canvas.releasePointerCapture(e.pointerId);
       }
 
-      // 绘制剩余的插值点
-      if (isDrawingRef.current) {
-        // 清理 WinTab 缓冲区
-        clearPointBuffer();
+      // 完成当前笔触
+      finishCurrentStroke();
+    },
+    [isPanning, setIsPanning, finishCurrentStroke]
+  );
 
-        // For brush tool, composite stroke buffer to layer with opacity ceiling
-        if (currentTool === 'brush') {
-          const layerCtx = getActiveLayerCtx();
-          if (layerCtx) {
-            endBrushStroke(layerCtx, brushOpacity);
-          }
-          compositeAndRender();
-        } else {
-          // For eraser, use the legacy stroke buffer
-          const remainingPoints = strokeBufferRef.current.finish();
-          if (remainingPoints.length > 0) {
-            drawPoints(remainingPoints);
-          }
-        }
-
-        // Save state to history after stroke completes
-        saveToHistory();
-        if (activeLayerId) {
-          updateThumbnail(activeLayerId);
-        }
+  // 键盘事件：空格键平移 + 撤销/重做 + 笔刷大小 + Alt取色
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Space for panning
+      if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        setSpacePressed(true);
+        return;
       }
 
-      isDrawingRef.current = false;
-    },
-    [
-      isPanning,
-      setIsPanning,
-      drawPoints,
-      saveToHistory,
-      activeLayerId,
-      updateThumbnail,
-      currentTool,
-      getActiveLayerCtx,
-      endBrushStroke,
-      brushOpacity,
-      compositeAndRender,
-    ]
-  );
+      // Alt for eyedropper (temporary tool switch)
+      if (e.code === 'AltLeft' || e.code === 'AltRight') {
+        if (!e.repeat && !altPressed) {
+          // 如果正在绘制，先强制结束当前笔触
+          if (isDrawingRef.current) {
+            finishCurrentStroke();
+          }
+
+          e.preventDefault();
+          setAltPressed(true);
+          previousToolRef.current = currentTool;
+          setTool('eyedropper');
+        }
+        return;
+      }
+
+      // Zoom tool shortcut
+      if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        // If not already on zoom tool, switch to it based on user preference
+        if (currentTool !== 'zoom') {
+          // Toggle or temporary switch logic can be refined here
+          setTool('zoom');
+        } else {
+          // Optional: press Z again to toggle back? For now just stay on zoom.
+          // Or could go back to previous tool? Let's just switch to zoom.
+        }
+        return;
+      }
+
+      // Brush/eraser size: [ to decrease, ] to increase
+      if (e.code === 'BracketLeft') {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 5;
+        setCurrentSize(currentSize - step);
+        return;
+      }
+      if (e.code === 'BracketRight') {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 5;
+        setCurrentSize(currentSize + step);
+        return;
+      }
+
+      // Tool switching: B for brush, E for eraser
+      if (e.code === 'KeyB' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setTool('brush');
+        return;
+      }
+      if (e.code === 'KeyE' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setTool('eraser');
+        return;
+      }
+
+      // Ctrl+Z for undo
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Ctrl+Y or Ctrl+Shift+Z for redo
+      if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyY' || (e.code === 'KeyZ' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setSpacePressed(false);
+        setIsPanning(false);
+        panStartRef.current = null;
+      }
+
+      // Release Alt: restore previous tool
+      if (e.code === 'AltLeft' || e.code === 'AltRight') {
+        setAltPressed(false);
+        if (previousToolRef.current) {
+          setTool(previousToolRef.current as ToolType);
+          previousToolRef.current = null;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [
+    setIsPanning,
+    handleUndo,
+    handleRedo,
+    altPressed,
+    currentTool,
+    setTool,
+    currentSize,
+    setCurrentSize,
+    finishCurrentStroke,
+  ]);
 
   // 计算 viewport 变换样式
   const viewportStyle: React.CSSProperties = {
