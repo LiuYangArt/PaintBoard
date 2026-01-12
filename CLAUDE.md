@@ -1,163 +1,118 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为 AI 助手提供项目开发指引。
 
-## Project Overview
+## 项目概述
 
-PaintBoard is a professional painting software with low-latency pen input, built with **Tauri 2.x + React 18 + Rust**. Target: < 12ms input latency for Wacom tablets.
+**PaintBoard** 是一个专业绘画软件，追求低延迟数位板输入体验。
 
-## Development Commands
+| 技术栈   | 说明                         |
+| -------- | ---------------------------- |
+| 前端     | React 18 + TypeScript + Vite |
+| 后端     | Tauri 2.x + Rust             |
+| 状态管理 | Zustand + Immer              |
+| 图标     | lucide-react                 |
+
+**目标**: Wacom 数位板输入延迟 < 12ms
+
+## 常用命令
 
 ```bash
-# Development
-pnpm dev              # Start Tauri dev server (frontend + backend hot reload)
-pnpm dev:frontend     # Frontend only (Vite)
-pnpm build:rust       # Build Rust backend only
+# 开发
+pnpm dev              # 启动开发服务器（前后端热重载）
+pnpm build            # 生产构建
 
-# Quality Checks
-pnpm check:all        # Run all checks (typecheck + lint + lint:rust + test)
-pnpm typecheck        # TypeScript type checking
-pnpm lint             # ESLint for frontend
-pnpm lint:rust        # Clippy for Rust (cargo clippy)
-pnpm format           # Format all code (Prettier + cargo fmt)
+# 检查
+pnpm check:all        # 全量检查（类型 + lint + 测试）
+pnpm format           # 格式化代码
 
-# Testing
-pnpm test             # Run frontend tests (Vitest)
-pnpm test:watch       # Watch mode
-cargo test --manifest-path src-tauri/Cargo.toml  # Rust tests
-cargo bench --manifest-path src-tauri/Cargo.toml # Performance benchmarks
-
-# Build
-pnpm build            # Production build (frontend + Tauri)
+# 发布
+.dev/publish_release.bat  # 版本发布助手
 ```
 
-## Architecture
+## 架构
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Tauri App                         │
+│                    Tauri 应用                        │
 ├─────────────────────────────────────────────────────┤
-│  Rust Backend (src-tauri/)                          │
-│  ├── input/     → Tablet input via octotablet      │
-│  │   ├── processor.rs  → Event filtering/timestamps│
-│  │   └── tablet.rs     → Device integration        │
-│  ├── brush/     → Stroke processing engine         │
-│  │   ├── engine.rs     → BrushEngine core          │
-│  │   └── interpolation.rs → Catmull-Rom splines    │
-│  └── commands.rs → Tauri IPC commands              │
+│  Rust 后端 (src-tauri/)                             │
+│  ├── input/     → 数位板输入（WinTab/PointerEvent） │
+│  ├── brush/     → 笔刷引擎（插值、压感曲线）        │
+│  └── commands.rs→ Tauri IPC 命令                    │
 ├─────────────────────────────────────────────────────┤
-│  Frontend (src/)                     IPC ↑↓         │
-│  ├── stores/    → Zustand state (document, tool)   │
-│  ├── components/→ React UI (Canvas, Toolbar, etc.) │
-│  └── gpu/       → WebGPU rendering (future)        │
+│  前端 (src/)                         IPC ↑↓         │
+│  ├── stores/    → Zustand 状态（文档、工具）        │
+│  ├── components/→ React UI 组件                     │
+│  └── gpu/       → WebGPU 渲染（规划中）             │
 └─────────────────────────────────────────────────────┘
 ```
 
-### Data Flow: Pen Input → Rendered Stroke
+### 数据流: 笔触输入 → 画布渲染
 
-1. **octotablet** (Rust) captures raw tablet events
-2. **InputProcessor** filters, timestamps, applies pressure curves
-3. **BrushEngine** interpolates points (Catmull-Rom), generates `StrokeSegment`
-4. **Tauri Event** sends segments to frontend
-5. **Canvas Renderer** draws via WebGPU/Canvas2D
+1. **WinTab/PointerEvent** 捕获原始输入
+2. **InputProcessor** 过滤、时间戳、压感曲线
+3. **BrushEngine** 插值点位（Catmull-Rom）
+4. **Canvas Renderer** 绘制到画布
 
-### Key Data Structures
+## 代码规范
 
-**Rust** (`src-tauri/src/`):
-- `RawInputPoint` - Raw tablet input (x, y, pressure, tilt, timestamp)
-- `BrushPoint` - Processed point with size/opacity after pressure curve
-- `StrokeSegment` - Render-ready stroke data with color/blend mode
+### 语言约定
 
-**TypeScript** (`src/stores/`):
-- `useDocumentStore` - Document state, layers, active layer (Zustand + Immer)
-- `useToolStore` - Current tool, brush settings, colors
+- **代码/注释/标识符/提交信息**: 英文
+- **讨论/文档**: 中文
 
-### IPC Commands
+### 文件命名
 
-Defined in `src-tauri/src/commands.rs`:
-- `create_document(width, height, dpi)` → `DocumentInfo`
-- `get_system_info()` → `SystemInfo`
-- `process_stroke(points)` → `Vec<StrokeSegment>`
-
-## Code Conventions
-
-### Languages
-- **Explanations/comments**: Chinese for discussion, English for code
-- **Identifiers/commits**: English
+| 类型       | 规则       | 示例              |
+| ---------- | ---------- | ----------------- |
+| React 组件 | PascalCase | `LayerPanel.tsx`  |
+| 工具函数   | camelCase  | `colorUtils.ts`   |
+| Rust 模块  | snake_case | `brush_engine.rs` |
 
 ### TypeScript
-- Path alias: `@/*` → `./src/*`
-- State management: Zustand with Immer middleware
-- Strict mode enabled, no `any`
-- **Icons**: Use `lucide-react` for all icons (size={18} strokeWidth={1.5} for toolbar, smaller for inline)
+
+- 路径别名: `@/*` → `./src/*`
+- 严格模式，禁止 `any`
+- 图标: `lucide-react`（工具栏 size={18}，行内更小）
 
 ### Rust
-- Clippy lints: `unwrap_used` and `expect_used` are warnings
-- Use `tracing` for logging, not `println!`
-- Error handling: Return `Result<T, String>` from Tauri commands
 
-### File Naming
-- React components: `PascalCase.tsx`
-- Utilities: `camelCase.ts`
-- Rust modules: `snake_case.rs`
+- Clippy: `unwrap_used` 和 `expect_used` 为警告
+- 日志: 使用 `tracing`，不用 `println!`
+- 错误: Tauri 命令返回 `Result<T, String>`
 
-## Performance Targets
+## 关键数据结构
 
-| Metric | Target |
-|--------|--------|
-| Input latency | < 12ms |
-| Brush render FPS | ≥ 120fps |
-| Max canvas size | 16K x 16K |
-| Memory (8K canvas) | < 2GB |
+**Rust** (`src-tauri/src/`):
 
-## Quality Assurance
+- `RawInputPoint` - 原始输入（坐标、压感、倾斜、时间戳）
+- `BrushPoint` - 处理后的点（应用压感曲线后的大小/透明度）
+- `StrokeSegment` - 渲染数据（颜色、混合模式）
 
-### Pre-commit Hooks (Husky + lint-staged)
+**TypeScript** (`src/stores/`):
 
-Every commit automatically runs:
-- ESLint + Prettier on staged `.ts/.tsx` files
-- `cargo fmt` on staged `.rs` files
+- `useDocumentStore` - 文档状态、图层管理
+- `useToolStore` - 当前工具、笔刷设置、颜色
 
-### Testing Strategy
+## 当前开发阶段
 
-| Layer | Tool | Location | Command |
-|-------|------|----------|---------|
-| Unit (Frontend) | Vitest | `src/**/__tests__/*.test.ts` | `pnpm test` |
-| Unit (Rust) | cargo test | `src-tauri/src/**` (`#[cfg(test)]`) | `cargo test` |
-| E2E | Playwright | `e2e/*.spec.ts` | `pnpm test:e2e` |
-| Performance | Criterion | `src-tauri/benches/` | `cargo bench` |
+参见 `docs/todo/development-roadmap.md` 获取完整路线图。
 
-### Development Workflow
+**当前重点 (M1.5 基础绘图工具)**:
 
-```
-1. Write test first (TDD recommended for core logic)
-2. Implement feature
-3. Run `pnpm check:all` locally
-4. Commit (husky auto-runs lint-staged)
-5. Push → CI validates (lint → test → build)
-```
+- [ ] 笔刷大小快捷键 `[` `]`
+- [ ] Alt 按住取色
+- [ ] 橡皮擦工具
+- [ ] Ctrl+Z / Ctrl+Shift+Z 撤销/反撤销
+- [ ] 清除图层内容
 
-### When to Write Tests
+## 版本管理
 
-- **Required**: Core algorithms (brush engine, interpolation, input processing)
-- **Required**: State management (Zustand stores)
-- **Recommended**: React components with complex logic
-- **Optional**: Pure UI components (use E2E for visual regression)
+版本号唯一来源: `package.json`
 
-### CI Pipeline
+发布流程:
 
-GitHub Actions runs on every PR:
-1. `lint` - TypeScript, ESLint, Clippy, rustfmt
-2. `test` - Vitest + cargo test with coverage
-3. `build` - Frontend + Tauri app
-4. `benchmark` - Performance regression (main branch only)
-
-## Current Development Phase
-
-Project is in early stage (M1: Basic Painting). See `docs/todo/development-roadmap.md` for full roadmap.
-
-**Immediate priorities:**
-1. Canvas 2D rendering with `desynchronized: true`
-2. Pressure-to-brush-size mapping via PointerEvent
-3. Catmull-Rom stroke smoothing
-4. Basic color picker and brush size controls
+1. 运行 `.dev/publish_release.bat`
+2. 选择版本类型（Patch/Minor/Major）
+3. 确认推送后自动触发 GitHub Actions 构建

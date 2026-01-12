@@ -1,6 +1,14 @@
+## 注意
+
+这是一个纯vibe-coding项目，代码都是ai写的，我一点都看不懂。请谨慎使用。
+
 # PaintBoard
 
-专业级绘画软件，支持 Wacom 压感输入，基于 Tauri + React + Rust 构建。
+个人用绘画软件，支持 Wacom 压感输入，基于 Tauri + React + Rust 构建。
+
+## 下载
+
+在Release中下载
 
 ## 特性
 
@@ -11,13 +19,13 @@
 
 ## 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| 应用框架 | Tauri 2.x |
-| 前端 | React 18 + TypeScript |
-| 渲染 | WebGPU |
-| 后端 | Rust |
-| 输入采集 | octotablet |
+| 层级     | 技术                  |
+| -------- | --------------------- |
+| 应用框架 | Tauri 2.x             |
+| 前端     | React 18 + TypeScript |
+| 渲染     | WebGPU                |
+| 后端     | Rust                  |
+| 输入采集 | wintab_lite           |
 
 ## 快速开始
 
@@ -73,14 +81,14 @@ PaintBoard/
 
 ## 开发命令
 
-| 命令 | 说明 |
-|------|------|
-| `pnpm dev` | 启动开发服务器 |
-| `pnpm build` | 构建生产版本 |
-| `pnpm test` | 运行前端测试 |
-| `pnpm check:all` | 运行所有检查 |
-| `pnpm lint` | 代码检查 |
-| `pnpm format` | 代码格式化 |
+| 命令             | 说明           |
+| ---------------- | -------------- |
+| `pnpm dev`       | 启动开发服务器 |
+| `pnpm build`     | 构建生产版本   |
+| `pnpm test`      | 运行前端测试   |
+| `pnpm check:all` | 运行所有检查   |
+| `pnpm lint`      | 代码检查       |
+| `pnpm format`    | 代码格式化     |
 
 ## 文档
 
@@ -90,4 +98,4 @@ PaintBoard/
 
 ## 许可证
 
-MIT
+GPL
