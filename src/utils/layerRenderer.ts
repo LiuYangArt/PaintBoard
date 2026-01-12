@@ -10,32 +10,33 @@ export interface LayerCanvas {
   visible: boolean;
   opacity: number;
   blendMode: BlendMode;
+  isBackground: boolean; // Background layer cannot be erased to transparency
 }
 
 /**
  * Map CSS blend mode names to canvas globalCompositeOperation
  */
-function getCompositeOperation(blendMode: BlendMode): GlobalCompositeOperation {
-  const mapping: Record<BlendMode, GlobalCompositeOperation> = {
-    normal: 'source-over',
-    multiply: 'multiply',
-    screen: 'screen',
-    overlay: 'overlay',
-    darken: 'darken',
-    lighten: 'lighten',
-    'color-dodge': 'color-dodge',
-    'color-burn': 'color-burn',
-    'hard-light': 'hard-light',
-    'soft-light': 'soft-light',
-    difference: 'difference',
-    exclusion: 'exclusion',
-    hue: 'hue',
-    saturation: 'saturation',
-    color: 'color',
-    luminosity: 'luminosity',
-  };
+const BLEND_MODE_MAPPING: Record<BlendMode, GlobalCompositeOperation> = {
+  normal: 'source-over',
+  multiply: 'multiply',
+  screen: 'screen',
+  overlay: 'overlay',
+  darken: 'darken',
+  lighten: 'lighten',
+  'color-dodge': 'color-dodge',
+  'color-burn': 'color-burn',
+  'hard-light': 'hard-light',
+  'soft-light': 'soft-light',
+  difference: 'difference',
+  exclusion: 'exclusion',
+  hue: 'hue',
+  saturation: 'saturation',
+  color: 'color',
+  luminosity: 'luminosity',
+};
 
-  return mapping[blendMode] || 'source-over';
+function getCompositeOperation(blendMode: BlendMode): GlobalCompositeOperation {
+  return BLEND_MODE_MAPPING[blendMode] ?? 'source-over';
 }
 
 /**
@@ -75,6 +76,7 @@ export class LayerRenderer {
       opacity?: number;
       blendMode?: BlendMode;
       fillColor?: string;
+      isBackground?: boolean;
     } = {}
   ): LayerCanvas {
     const canvas = document.createElement('canvas');
@@ -105,6 +107,7 @@ export class LayerRenderer {
       visible: options.visible ?? true,
       opacity: options.opacity ?? 100,
       blendMode: options.blendMode ?? 'normal',
+      isBackground: options.isBackground ?? false,
     };
 
     this.layers.set(id, layer);
@@ -144,7 +147,7 @@ export class LayerRenderer {
    */
   updateLayer(
     id: string,
-    props: { visible?: boolean; opacity?: number; blendMode?: BlendMode }
+    props: { visible?: boolean; opacity?: number; blendMode?: BlendMode; isBackground?: boolean }
   ): void {
     const layer = this.layers.get(id);
     if (!layer) return;
@@ -152,6 +155,7 @@ export class LayerRenderer {
     if (props.visible !== undefined) layer.visible = props.visible;
     if (props.opacity !== undefined) layer.opacity = props.opacity;
     if (props.blendMode !== undefined) layer.blendMode = props.blendMode;
+    if (props.isBackground !== undefined) layer.isBackground = props.isBackground;
   }
 
   /**
@@ -234,12 +238,19 @@ export class LayerRenderer {
   }
 
   /**
-   * Clear a single layer's content (make it transparent)
+   * Clear a single layer's content
+   * For background layers, fill with white instead of making transparent
    */
   clearLayer(id: string): void {
     const layer = this.layers.get(id);
     if (!layer) return;
     layer.ctx.clearRect(0, 0, this.width, this.height);
+
+    // Background layer should be filled with white after clearing
+    if (layer.isBackground) {
+      layer.ctx.fillStyle = '#ffffff';
+      layer.ctx.fillRect(0, 0, this.width, this.height);
+    }
   }
 
   /**
