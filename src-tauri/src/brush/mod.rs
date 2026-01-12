@@ -1,10 +1,28 @@
 //! Brush engine module - handles stroke processing and brush rendering
+//!
+//! ## Architecture: Flow/Opacity Three-Level Pipeline
+//!
+//! The brush system uses a three-level rendering pipeline to achieve
+//! Photoshop-like behavior:
+//!
+//! 1. **Dab Level** (stamper.rs): Individual brush stamps with Flow-controlled alpha
+//! 2. **Stroke Buffer** (stroke_buffer.rs): Accumulates dabs within a single stroke
+//! 3. **Layer Level**: Composites stroke with Opacity as ceiling
+//!
+//! This separation allows Flow to accumulate within a stroke while Opacity
+//! acts as a maximum limit.
 
+mod blend;
 mod engine;
 mod interpolation;
+mod stamper;
+mod stroke_buffer;
 
+pub use blend::{blend_normal_premul, BlendFunc};
 pub use engine::{BrushEngine, BrushSettings};
 pub use interpolation::{interpolate_catmull_rom, InterpolationMode};
+pub use stamper::{BrushStamper, Dab, StamperConfig};
+pub use stroke_buffer::{Pixel, Rect, StrokeBuffer};
 
 use serde::{Deserialize, Serialize};
 

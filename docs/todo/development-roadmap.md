@@ -183,13 +183,8 @@
 #### 2.4 图层面板 UI
 
 - [x] 图层列表显示（缩略图 + 名称）
-- [x] 图层缩略图显示实际图层效果
-      <<<<<<< HEAD
-- [ ] background 图层优化：不可被擦除 alpha，保留背景色，包括eraser工具和图层清除工具 [/]
-- [ ] # 拖拽排序
-- [x] background 图层优化：不可被擦除 alpha，保留背景色
+- [x] 图层缩略图显示实际图层效果 - [x] background 图层优化：不可被擦除 alpha，保留背景色
 - [x] 拖拽排序
-  > > > > > > > fc45199d4a515e4253993d03672315b72e80a2a2
 - [x] 可见性切换按钮（眼睛图标）
 - [x] 锁定按钮
 - [x] 不透明度滑块
@@ -216,14 +211,15 @@
 
 > 手感正确性核心， Flow/Opacity 分离
 
-- [ ] 实现输入平滑 (Catmull-Rom / Bezier)
-- [ ] 实现距离累积盖印算法
-- [ ] 建立 Flow/Opacity 三级渲染管线 (Dab -> Stroke Buffer -> Layer)
-- [ ] UI 界面，brush size/flow/opacity 各自有独立的slider。 slider旁边有单独的压感overide开关，开启后此参数必受压感影响。
+- [x] 实现输入平滑 (Catmull-Rom / Bezier)
+- [x] 实现距离累积盖印算法
+- [x] 建立 Flow/Opacity 三级渲染管线 (Dab -> Stroke Buffer -> Layer)
+- [x] UI 界面，brush size/flow/opacity 各自有独立的slider。 slider旁边有单独的压感overide开关，开启后此参数必受压感影响。
 <!-- - [ ] 实现基础混合模式 (Normal, Multiply) -->
 
 #### 3.2 笔刷引擎扩展 (Phase 2)
 
+- [ ] 先要有一个单独的笔刷参数设置面板，承载这些笔刷设置。
 - [ ] 实现参数化圆形笔刷生成 (硬度/圆度)
 - [ ] 支持采样笔刷 (Sampled Brush Tip)
 - [ ] 实现动态参数系统 (压感/倾斜 -> 大小/透明度)
@@ -396,7 +392,7 @@
 - [ ] 内置快捷键:
   - [ ] 工具切换快捷键
   - [x] 笔刷大小 `[` `]` 快捷调节 → 已前置到 M1.5
-  - [ ] 撤销/重做 (Ctrl+Z / Ctrl+Y)
+  - [x] 撤销/重做 (Ctrl+Z / Ctrl+Shift+Z)
   - [ ] 保存/导出 (Ctrl+S / Ctrl+Shift+E)
 - [ ] 快捷键设置 UI:
   - [ ] 快捷键列表面板

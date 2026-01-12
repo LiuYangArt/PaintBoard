@@ -39,8 +39,10 @@ interface ToolState {
 
   // Brush settings
   brushSize: number;
-  brushOpacity: number;
+  brushFlow: number; // Flow: per-dab opacity, accumulates within stroke
+  brushOpacity: number; // Opacity: ceiling for entire stroke
   brushHardness: number;
+  brushSpacing: number; // Spacing as fraction of size (0.01-1.0)
   brushColor: string;
   backgroundColor: string;
 
@@ -49,7 +51,8 @@ interface ToolState {
 
   // Pressure sensitivity settings
   pressureSizeEnabled: boolean;
-  pressureOpacityEnabled: boolean;
+  pressureFlowEnabled: boolean; // Pressure affects flow (per-dab)
+  pressureOpacityEnabled: boolean; // Pressure affects opacity (legacy, can be disabled)
   pressureCurve: PressureCurve;
 
   // Cursor display settings
@@ -58,8 +61,10 @@ interface ToolState {
   // Actions
   setTool: (tool: ToolType) => void;
   setBrushSize: (size: number) => void;
+  setBrushFlow: (flow: number) => void;
   setBrushOpacity: (opacity: number) => void;
   setBrushHardness: (hardness: number) => void;
+  setBrushSpacing: (spacing: number) => void;
   setBrushColor: (color: string) => void;
   setBackgroundColor: (color: string) => void;
   setEraserSize: (size: number) => void;
@@ -70,6 +75,7 @@ interface ToolState {
   swapColors: () => void;
   resetColors: () => void;
   togglePressureSize: () => void;
+  togglePressureFlow: () => void;
   togglePressureOpacity: () => void;
   setPressureCurve: (curve: PressureCurve) => void;
   toggleCrosshair: () => void;
@@ -79,13 +85,16 @@ export const useToolStore = create<ToolState>((set, get) => ({
   // Initial state
   currentTool: 'brush',
   brushSize: 20,
-  brushOpacity: 1,
+  brushFlow: 1, // Default: full flow
+  brushOpacity: 1, // Default: full opacity ceiling
   brushHardness: 100,
+  brushSpacing: 0.25, // 25% of brush size
   brushColor: '#000000',
   backgroundColor: '#ffffff',
   eraserSize: 20,
   pressureSizeEnabled: true,
-  pressureOpacityEnabled: true,
+  pressureFlowEnabled: true, // Pressure affects flow by default
+  pressureOpacityEnabled: false, // Opacity ceiling not affected by pressure by default
   pressureCurve: 'linear',
   showCrosshair: false,
 
@@ -94,9 +103,13 @@ export const useToolStore = create<ToolState>((set, get) => ({
 
   setBrushSize: (size) => set({ brushSize: clampSize(size) }),
 
-  setBrushOpacity: (opacity) => set({ brushOpacity: Math.max(0, Math.min(1, opacity)) }),
+  setBrushFlow: (flow) => set({ brushFlow: Math.max(0.01, Math.min(1, flow)) }),
+
+  setBrushOpacity: (opacity) => set({ brushOpacity: Math.max(0.01, Math.min(1, opacity)) }),
 
   setBrushHardness: (hardness) => set({ brushHardness: Math.max(0, Math.min(100, hardness)) }),
+
+  setBrushSpacing: (spacing) => set({ brushSpacing: Math.max(0.01, Math.min(1, spacing)) }),
 
   setBrushColor: (color) => set({ brushColor: color }),
 
@@ -131,6 +144,8 @@ export const useToolStore = create<ToolState>((set, get) => ({
     }),
 
   togglePressureSize: () => set((state) => ({ pressureSizeEnabled: !state.pressureSizeEnabled })),
+
+  togglePressureFlow: () => set((state) => ({ pressureFlowEnabled: !state.pressureFlowEnabled })),
 
   togglePressureOpacity: () =>
     set((state) => ({ pressureOpacityEnabled: !state.pressureOpacityEnabled })),

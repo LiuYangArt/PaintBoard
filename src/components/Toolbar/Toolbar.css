@@ -95,6 +95,35 @@
   border-color: var(--accent);
 }
 
+/* Pressure Toggle Button */
+.pressure-toggle {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pressure-toggle:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.pressure-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
 /* Color Picker */
 .color-picker {
   gap: 8px;
