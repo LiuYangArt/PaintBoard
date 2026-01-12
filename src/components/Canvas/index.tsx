@@ -9,6 +9,7 @@ import { LayerRenderer } from '@/utils/layerRenderer';
 import './Canvas.css';
 
 import { useCursor } from './useCursor';
+import { useBrushRenderer, BrushRenderConfig } from './useBrushRenderer';
 
 export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,7 +43,12 @@ export function Canvas() {
     eraserSize,
     brushColor,
     brushOpacity,
+    brushFlow,
+    brushHardness,
+    brushSpacing,
     pressureCurve,
+    pressureSizeEnabled,
+    pressureFlowEnabled,
     setCurrentSize,
     setBrushColor,
     setTool,
@@ -53,7 +59,12 @@ export function Canvas() {
     eraserSize: s.eraserSize,
     brushColor: s.brushColor,
     brushOpacity: s.brushOpacity,
+    brushFlow: s.brushFlow,
+    brushHardness: s.brushHardness,
+    brushSpacing: s.brushSpacing,
     pressureCurve: s.pressureCurve,
+    pressureSizeEnabled: s.pressureSizeEnabled,
+    pressureFlowEnabled: s.pressureFlowEnabled,
     setCurrentSize: s.setCurrentSize,
     setBrushColor: s.setBrushColor,
     setTool: s.setTool,
@@ -78,6 +89,15 @@ export function Canvas() {
   });
 
   const { pushState, undo, redo } = useHistoryStore();
+
+  // Initialize brush renderer for Flow/Opacity three-level pipeline
+  const {
+    beginStroke: beginBrushStroke,
+    processPoint: processBrushPoint,
+    endStroke: endBrushStroke,
+    getPreviewCanvas,
+    isStrokeActive,
+  } = useBrushRenderer({ width, height });
 
   // Tablet store: We use getState() directly in event handlers for real-time data
   // No need to subscribe to state changes here since we sync-read in handlers
@@ -481,7 +501,69 @@ export function Canvas() {
     return layer?.isBackground ?? false;
   }, [activeLayerId]);
 
-  // 绘制插值后的点序列
+  // Build brush render config for the three-level pipeline
+  const getBrushConfig = useCallback((): BrushRenderConfig => {
+    return {
+      size: currentSize,
+      flow: brushFlow,
+      opacity: brushOpacity,
+      hardness: brushHardness,
+      spacing: brushSpacing,
+      color: brushColor,
+      pressureSizeEnabled,
+      pressureFlowEnabled,
+      pressureCurve,
+    };
+  }, [
+    currentSize,
+    brushFlow,
+    brushOpacity,
+    brushHardness,
+    brushSpacing,
+    brushColor,
+    pressureSizeEnabled,
+    pressureFlowEnabled,
+    pressureCurve,
+  ]);
+
+  // Composite with stroke buffer preview overlay
+  const compositeAndRenderWithPreview = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    const renderer = layerRendererRef.current;
+
+    if (!canvas || !ctx || !renderer) return;
+
+    // Composite all layers
+    const compositeCanvas = renderer.composite();
+
+    // Clear and draw composite to display canvas
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(compositeCanvas, 0, 0);
+
+    // Overlay stroke buffer preview if stroke is active
+    if (isStrokeActive()) {
+      const previewCanvas = getPreviewCanvas();
+      if (previewCanvas) {
+        ctx.globalAlpha = brushOpacity;
+        ctx.drawImage(previewCanvas, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }, [width, height, isStrokeActive, getPreviewCanvas, brushOpacity]);
+
+  // Process a single point through the brush renderer (for brush tool)
+  const processBrushPointWithConfig = useCallback(
+    (x: number, y: number, pressure: number) => {
+      const config = getBrushConfig();
+      processBrushPoint(x, y, pressure, config);
+      // Render stroke buffer preview to display canvas
+      compositeAndRenderWithPreview();
+    },
+    [getBrushConfig, processBrushPoint, compositeAndRenderWithPreview]
+  );
+
+  // 绘制插值后的点序列 (used for eraser, legacy fallback)
   const drawPoints = useCallback(
     (points: Point[]) => {
       const ctx = getActiveLayerCtx();
@@ -603,6 +685,14 @@ export function Canvas() {
       isDrawingRef.current = true;
       strokeBufferRef.current.reset();
 
+      // For brush tool, use the new three-level pipeline
+      if (currentTool === 'brush') {
+        beginBrushStroke();
+        processBrushPointWithConfig(canvasX, canvasY, pressure);
+        return;
+      }
+
+      // For eraser, use the legacy stroke buffer
       const point: Point = {
         x: canvasX,
         y: canvasY,
@@ -613,7 +703,17 @@ export function Canvas() {
 
       strokeBufferRef.current.addPoint(point);
     },
-    [spacePressed, setIsPanning, scale, activeLayerId, layers, currentTool, pickColorAt]
+    [
+      spacePressed,
+      setIsPanning,
+      scale,
+      activeLayerId,
+      layers,
+      currentTool,
+      pickColorAt,
+      beginBrushStroke,
+      processBrushPointWithConfig,
+    ]
   );
 
   const handlePointerMove = useCallback(
@@ -728,6 +828,13 @@ export function Canvas() {
           tiltY = (evt as PointerEvent).tiltY ?? 0;
         }
 
+        // For brush tool, use the new three-level pipeline
+        if (currentTool === 'brush') {
+          processBrushPointWithConfig(canvasX, canvasY, pressure);
+          continue;
+        }
+
+        // For eraser, use the legacy stroke buffer
         const point: Point = {
           x: canvasX,
           y: canvasY,
@@ -742,7 +849,7 @@ export function Canvas() {
         }
       }
     },
-    [isPanning, pan, drawPoints, scale, setScale]
+    [isPanning, pan, drawPoints, scale, setScale, currentTool, processBrushPointWithConfig]
   );
 
   const handlePointerUp = useCallback(
@@ -776,9 +883,19 @@ export function Canvas() {
         // 清理 WinTab 缓冲区
         clearPointBuffer();
 
-        const remainingPoints = strokeBufferRef.current.finish();
-        if (remainingPoints.length > 0) {
-          drawPoints(remainingPoints);
+        // For brush tool, composite stroke buffer to layer with opacity ceiling
+        if (currentTool === 'brush') {
+          const layerCtx = getActiveLayerCtx();
+          if (layerCtx) {
+            endBrushStroke(layerCtx, brushOpacity);
+          }
+          compositeAndRender();
+        } else {
+          // For eraser, use the legacy stroke buffer
+          const remainingPoints = strokeBufferRef.current.finish();
+          if (remainingPoints.length > 0) {
+            drawPoints(remainingPoints);
+          }
         }
 
         // Save state to history after stroke completes
@@ -790,7 +907,19 @@ export function Canvas() {
 
       isDrawingRef.current = false;
     },
-    [isPanning, setIsPanning, drawPoints, saveToHistory, activeLayerId, updateThumbnail]
+    [
+      isPanning,
+      setIsPanning,
+      drawPoints,
+      saveToHistory,
+      activeLayerId,
+      updateThumbnail,
+      currentTool,
+      getActiveLayerCtx,
+      endBrushStroke,
+      brushOpacity,
+      compositeAndRender,
+    ]
   );
 
   // 计算 viewport 变换样式

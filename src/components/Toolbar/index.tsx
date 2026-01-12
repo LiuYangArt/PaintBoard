@@ -36,6 +36,27 @@ const PRESSURE_CURVES: { id: PressureCurve; label: string }[] = [
   { id: 'sCurve', label: 'S-Curve' },
 ];
 
+/** Pressure toggle button component */
+function PressureToggle({
+  enabled,
+  onToggle,
+  title,
+}: {
+  enabled: boolean;
+  onToggle: () => void;
+  title: string;
+}) {
+  return (
+    <button
+      className={`pressure-toggle ${enabled ? 'active' : ''}`}
+      onClick={onToggle}
+      title={title}
+    >
+      P
+    </button>
+  );
+}
+
 export function Toolbar() {
   const {
     currentTool,
@@ -43,10 +64,16 @@ export function Toolbar() {
     brushSize,
     eraserSize,
     setCurrentSize,
+    brushFlow,
+    setBrushFlow,
     brushOpacity,
     setBrushOpacity,
     pressureCurve,
     setPressureCurve,
+    pressureSizeEnabled,
+    togglePressureSize,
+    pressureFlowEnabled,
+    togglePressureFlow,
     showCrosshair,
     toggleCrosshair,
   } = useToolStore();
@@ -90,6 +117,11 @@ export function Toolbar() {
       <div className="toolbar-section brush-settings">
         <label className="setting">
           <span className="setting-label">Size</span>
+          <PressureToggle
+            enabled={pressureSizeEnabled}
+            onToggle={togglePressureSize}
+            title="Pressure affects size"
+          />
           <input
             type="range"
             min="1"
@@ -101,10 +133,28 @@ export function Toolbar() {
         </label>
 
         <label className="setting">
+          <span className="setting-label">Flow</span>
+          <PressureToggle
+            enabled={pressureFlowEnabled}
+            onToggle={togglePressureFlow}
+            title="Pressure affects flow"
+          />
+          <input
+            type="range"
+            min="0.01"
+            max="1"
+            step="0.01"
+            value={brushFlow}
+            onChange={(e) => setBrushFlow(Number(e.target.value))}
+          />
+          <span className="setting-value">{Math.round(brushFlow * 100)}%</span>
+        </label>
+
+        <label className="setting">
           <span className="setting-label">Opacity</span>
           <input
             type="range"
-            min="0"
+            min="0.01"
             max="1"
             step="0.01"
             value={brushOpacity}
@@ -114,7 +164,7 @@ export function Toolbar() {
         </label>
 
         <label className="setting">
-          <span className="setting-label">Pressure</span>
+          <span className="setting-label">Curve</span>
           <select
             value={pressureCurve}
             onChange={(e) => setPressureCurve(e.target.value as PressureCurve)}
