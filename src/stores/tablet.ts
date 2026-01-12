@@ -141,8 +141,6 @@ export const useTabletStore = create<TabletState>((set, get) => ({
         info: response.info,
         isInitialized: true,
       });
-
-      console.log('[Tablet] Initialized:', response);
     } catch (error) {
       console.error('[Tablet] Init failed:', error);
       set({
@@ -196,7 +194,6 @@ export const useTabletStore = create<TabletState>((set, get) => ({
       await invoke('start_tablet');
 
       set({ isStreaming: true });
-      console.log('[Tablet] Started streaming');
     } catch (error) {
       console.error('[Tablet] Start failed:', error);
     }
@@ -224,8 +221,6 @@ export const useTabletStore = create<TabletState>((set, get) => ({
         unlisten: null,
         currentPoint: null,
       });
-
-      console.log('[Tablet] Stopped streaming');
     } catch (error) {
       console.error('[Tablet] Stop failed:', error);
     }

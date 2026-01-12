@@ -46,10 +46,8 @@ function App() {
         return;
       }
 
-      console.log('[App] Initializing tablet backend...');
       await initTablet({ backend: 'auto' });
       await startTablet();
-      console.log('[App] Tablet backend ready');
     };
 
     setupTablet();
@@ -57,12 +55,11 @@ function App() {
     // Cleanup only on actual unmount (App never unmounts in normal use)
     return () => {
       if (tabletInitializedRef.current) {
-        console.log('[App] Cleaning up tablet backend...');
         cleanupTablet();
         tabletInitializedRef.current = false;
       }
     };
-  }, []); // Empty deps - run once on mount
+  }, [initTablet, startTablet, cleanupTablet]); // Run once on mount (deps are stable)
 
   useEffect(() => {
     // 初始化默认文档

@@ -84,3 +84,4 @@ run_claude_pwsh.bat
 *.code-workspace
 .claude/settings.local.json
 *.lnk
+*.txt

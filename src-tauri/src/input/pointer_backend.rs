@@ -158,10 +158,10 @@ mod tests {
     }
 
     #[test]
-    fn test_pointer_backend_push_input() {
+    fn test_pointer_backend_push_input() -> Result<(), String> {
         let mut backend = PointerEventBackend::new();
-        backend.init(&TabletConfig::default()).unwrap();
-        backend.start().unwrap();
+        backend.init(&TabletConfig::default())?;
+        backend.start()?;
 
         backend.push_input(100.0, 200.0, 0.5, 10.0, -5.0);
 
@@ -176,5 +176,6 @@ mod tests {
         } else {
             panic!("Expected Input event");
         }
+        Ok(())
     }
 }
