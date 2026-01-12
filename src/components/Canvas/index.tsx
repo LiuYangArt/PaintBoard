@@ -212,23 +212,45 @@ export function Canvas() {
     updateThumbnail(activeLayerId);
   }, [activeLayerId, saveToHistory, compositeAndRender, updateThumbnail]);
 
-  // Expose undo/redo/clearLayer handlers globally for toolbar
+  // Duplicate layer content from source to target
+  const handleDuplicateLayer = useCallback(
+    (fromId: string, toId: string) => {
+      const renderer = layerRendererRef.current;
+      if (!renderer) return;
+
+      const sourceLayer = renderer.getLayer(fromId);
+      const targetLayer = renderer.getLayer(toId);
+
+      if (!sourceLayer || !targetLayer) return;
+
+      // Copy the source layer content to target layer
+      targetLayer.ctx.drawImage(sourceLayer.canvas, 0, 0);
+      compositeAndRender();
+      updateThumbnail(toId);
+    },
+    [compositeAndRender, updateThumbnail]
+  );
+
+  // Expose undo/redo/clearLayer/duplicateLayer handlers globally for toolbar
   useEffect(() => {
     const win = window as Window & {
       __canvasUndo?: () => void;
       __canvasRedo?: () => void;
       __canvasClearLayer?: () => void;
+      __canvasDuplicateLayer?: (from: string, to: string) => void;
     };
     win.__canvasUndo = handleUndo;
     win.__canvasRedo = handleRedo;
     win.__canvasClearLayer = handleClearLayer;
+    win.__canvasDuplicateLayer = handleDuplicateLayer;
 
     return () => {
       delete win.__canvasUndo;
       delete win.__canvasRedo;
       delete win.__canvasClearLayer;
+      delete win.__canvasDuplicateLayer;
     };
-  }, [handleUndo, handleRedo, handleClearLayer]);
+  }, [handleUndo, handleRedo, handleClearLayer, handleDuplicateLayer]);
 
   // Initialize document and layer renderer
   useEffect(() => {
@@ -271,14 +293,18 @@ export function Canvas() {
           visible: layer.visible,
           opacity: layer.opacity,
           blendMode: layer.blendMode,
-          fillColor: layer.name === 'Background' ? '#ffffff' : undefined,
+          fillColor: layer.isBackground ? '#ffffff' : undefined,
+          isBackground: layer.isBackground,
         });
+        // Generate initial thumbnail for new layers
+        updateThumbnail(layer.id);
       } else {
         // Update existing layer properties
         renderer.updateLayer(layer.id, {
           visible: layer.visible,
           opacity: layer.opacity,
           blendMode: layer.blendMode,
+          isBackground: layer.isBackground,
         });
       }
     }
@@ -296,7 +322,7 @@ export function Canvas() {
         pushState(imageData);
       }
     }
-  }, [layers, width, height, activeLayerId, compositeAndRender, pushState]);
+  }, [layers, width, height, activeLayerId, compositeAndRender, pushState, updateThumbnail]);
 
   // Re-composite when layer visibility/opacity changes
   useEffect(() => {
@@ -432,6 +458,13 @@ export function Canvas() {
     };
   }, [handleWheel]);
 
+  // Check if active layer is a background layer
+  const isActiveLayerBackground = useCallback(() => {
+    if (!layerRendererRef.current || !activeLayerId) return false;
+    const layer = layerRendererRef.current.getLayer(activeLayerId);
+    return layer?.isBackground ?? false;
+  }, [activeLayerId]);
+
   // 绘制插值后的点序列
   const drawPoints = useCallback(
     (points: Point[]) => {
@@ -439,6 +472,7 @@ export function Canvas() {
       if (!ctx || points.length < 2) return;
 
       const isEraser = currentTool === 'eraser';
+      const isBackground = isActiveLayerBackground();
 
       for (let i = 1; i < points.length; i++) {
         const from = points[i - 1];
@@ -457,9 +491,15 @@ export function Canvas() {
         ctx.lineJoin = 'round';
 
         if (isEraser) {
-          // Eraser: use destination-out to erase to transparency
-          ctx.globalCompositeOperation = 'destination-out';
-          ctx.strokeStyle = 'rgba(0,0,0,1)';
+          if (isBackground) {
+            // Background layer: draw white instead of erasing to transparency
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = '#ffffff';
+          } else {
+            // Normal layer: erase to transparency
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.strokeStyle = 'rgba(0,0,0,1)';
+          }
         } else {
           // Brush: normal drawing
           ctx.globalCompositeOperation = 'source-over';
@@ -486,6 +526,7 @@ export function Canvas() {
       currentTool,
       getActiveLayerCtx,
       compositeAndRender,
+      isActiveLayerBackground,
     ]
   );
 
@@ -525,6 +566,10 @@ export function Canvas() {
       // Drawing/erasing mode
       if (!activeLayerId) return;
 
+      // Check if active layer is visible - prevent drawing on hidden layers
+      const activeLayer = layers.find((l) => l.id === activeLayerId);
+      if (!activeLayer?.visible) return;
+
       canvas.setPointerCapture(e.pointerId);
       isDrawingRef.current = true;
       strokeBufferRef.current.reset();
@@ -539,7 +584,7 @@ export function Canvas() {
 
       strokeBufferRef.current.addPoint(point);
     },
-    [spacePressed, setIsPanning, scale, activeLayerId, currentTool, pickColorAt]
+    [spacePressed, setIsPanning, scale, activeLayerId, layers, currentTool, pickColorAt]
   );
 
   const handlePointerMove = useCallback(
