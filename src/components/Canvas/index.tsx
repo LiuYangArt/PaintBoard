@@ -14,6 +14,8 @@ export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDrawingRef = useRef(false);
+  const isZoomingRef = useRef(false);
+  const zoomStartRef = useRef<{ x: number; y: number; startScale: number } | null>(null);
   const strokeBufferRef = useRef<StrokeBuffer>(new StrokeBuffer(2));
   const panStartRef = useRef<{ x: number; y: number } | null>(null);
   const layerRendererRef = useRef<LayerRenderer | null>(null);
@@ -61,7 +63,7 @@ export function Canvas() {
   // Get current tool size (brush or eraser)
   const currentSize = currentTool === 'eraser' ? eraserSize : brushSize;
 
-  const { scale, offsetX, offsetY, isPanning, zoomIn, zoomOut, pan, setIsPanning } =
+  const { scale, offsetX, offsetY, isPanning, zoomIn, zoomOut, pan, setIsPanning, setScale } =
     useViewportStore();
 
   const { cursorStyle, showDomCursor } = useCursor({
@@ -350,6 +352,20 @@ export function Canvas() {
         return;
       }
 
+      // Zoom tool shortcut
+      if (e.code === 'KeyZ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        // If not already on zoom tool, switch to it based on user preference
+        if (currentTool !== 'zoom') {
+          // Toggle or temporary switch logic can be refined here
+          setTool('zoom');
+        } else {
+          // Optional: press Z again to toggle back? For now just stay on zoom.
+          // Or could go back to previous tool? Let's just switch to zoom.
+        }
+        return;
+      }
+
       // Brush/eraser size: [ to decrease, ] to increase
       if (e.code === 'BracketLeft') {
         e.preventDefault();
@@ -536,19 +552,32 @@ export function Canvas() {
       const container = containerRef.current;
       if (!container) return;
 
-      // PointerDown 时刻，WinTab 数据可能还未通过 Tauri 事件到达前端
-      // 因此优先使用 PointerEvent.pressure（Windows Ink 提供的压感）
-      // WinTab 数据将在后续的 PointerMove 中使用
-      const pressure = e.pressure > 0 ? e.pressure : 0.5;
-      const tiltX = e.tiltX ?? 0;
-      const tiltY = e.tiltY ?? 0;
-
       // 平移模式
       if (spacePressed) {
         setIsPanning(true);
         panStartRef.current = { x: e.clientX, y: e.clientY };
         return;
       }
+
+      // Zoom tool logic
+      if (currentTool === 'zoom') {
+        isZoomingRef.current = true;
+        zoomStartRef.current = {
+          x: e.clientX, // Global client X for delta calculation
+          y: e.clientY,
+          startScale: scale,
+        };
+
+        container.setPointerCapture(e.pointerId);
+        return;
+      }
+
+      // PointerDown 时刻，WinTab 数据可能还未通过 Tauri 事件到达前端
+      // 因此优先使用 PointerEvent.pressure（Windows Ink 提供的压感）
+      // WinTab 数据将在后续的 PointerMove 中使用
+      const pressure = e.pressure > 0 ? e.pressure : 0.5;
+      const tiltX = e.tiltX ?? 0;
+      const tiltY = e.tiltY ?? 0;
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -603,6 +632,60 @@ export function Canvas() {
         pan(deltaX, deltaY);
         panStartRef.current = { x: lastEvent.clientX, y: lastEvent.clientY };
         // Note: cursor position is updated by native event listener
+        return;
+      }
+
+      // Zoom logic
+      if (isZoomingRef.current && zoomStartRef.current) {
+        const lastEvent = coalescedEvents[coalescedEvents.length - 1] ?? e.nativeEvent;
+        const deltaX = lastEvent.clientX - zoomStartRef.current.x;
+
+        // Apply scrubby zoom: drag right to zoom in, left to zoom out
+        // Sensitivity factor 0.01 means 100px drag doubles/halves the scale roughly
+        const zoomFactor = 1 + deltaX * 0.01;
+        const newScale = zoomStartRef.current.startScale * zoomFactor;
+
+        // Zoom centered on the screen center for now, or we could keep the initial mouse center.
+        // Scrubby zoom usually zooms around the initial click point.
+        // We know initial click point relative to viewport, but setScale needs
+        // to handle the viewport offset calculations.
+        // However, standard scrubby zoom in PS zooms into the point you clicked.
+        // But here we need to map client coordinates to viewport-relative.
+        // Let's use the center of viewport to match simple expectation or investigate setScale behavior.
+        // setScale logic:
+        // if (centerX !== undefined && centerY !== undefined) {
+        //   const scaleRatio = clampedScale / scale;
+        //   const newOffsetX = centerX - (centerX - offsetX) * scaleRatio;
+        //   const newOffsetY = centerY - (centerY - offsetY) * scaleRatio;
+        //   ...
+        // }
+        // We need 'centerX' and 'centerY' valid for the viewport.
+        // It should be relative to the viewport container top/left (which is what setScale expects? No, setScale expects viewport coordinates?)
+        // Let's look at setScale in viewport.ts:
+        // const newOffsetX = centerX - (centerX - offsetX) * scaleRatio;
+        // This suggests centerX is in the same coordinate space as offsetX... which usually is screen space or container space?
+        // Let's assume container space (client params passed to zoomIn usually).
+        // For scrubby zoom, let's just not pass center to keep it simple first (zooms top-left or center? setScale without params maintains center? No, scale with no params just updates scale)
+        // Check viewport.ts again... setScale without center updates scale but keeps offsetX/Y same?
+        // No, setScale(clampedScale) -> set({ scale: clampedScale }).
+        // This zooms towards top-left (0,0) effectively if offsetX/Y not changed?
+        // Wait, if scale changes, the view changes. If offsetX/Y stays same, the top-left corner of content stays at same screen pos.
+        // To zoom around center of screen: get viewport center.
+
+        // Let's try to zoom around the initial click point (which we didn't save in container coords, let's calculate it).
+        // Actually better to zoom around current mouse position or initial click? Scrubby is initial click.
+        // But to make it simpler, let's just use setScale(newScale) and see.
+        // Actually, let's use the zoomIn logic which handles centering? No scrubby is continuous.
+
+        // Let's retrieve container rect to convert initial mouse to container coords
+        const container = containerRef.current;
+        if (container) {
+          const rect = container.getBoundingClientRect();
+          const initialClickX = zoomStartRef.current.x - rect.left;
+          const initialClickY = zoomStartRef.current.y - rect.top;
+          setScale(newScale, initialClickX, initialClickY);
+        }
+
         return;
       }
 
@@ -690,7 +773,7 @@ export function Canvas() {
         }
       }
     },
-    [isPanning, pan, drawPoints, scale]
+    [isPanning, pan, drawPoints, scale, setScale]
   );
 
   const handlePointerUp = useCallback(
@@ -699,6 +782,17 @@ export function Canvas() {
       if (isPanning) {
         setIsPanning(false);
         panStartRef.current = null;
+        return;
+      }
+
+      // Finish zooming
+      if (isZoomingRef.current) {
+        isZoomingRef.current = false;
+        zoomStartRef.current = null;
+        const container = containerRef.current;
+        if (container) {
+          container.releasePointerCapture(e.pointerId);
+        }
         return;
       }
 

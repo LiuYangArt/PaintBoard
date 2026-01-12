@@ -9,6 +9,7 @@ const TOOL_CURSORS: Record<ToolType, string> = {
   move: 'move',
   select: 'crosshair',
   lasso: 'crosshair',
+  zoom: 'zoom-in',
 };
 
 interface UseCursorProps {
