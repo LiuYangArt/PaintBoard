@@ -8,15 +8,7 @@ import { StrokeBuffer, Point } from '@/utils/interpolation';
 import { LayerRenderer } from '@/utils/layerRenderer';
 import './Canvas.css';
 
-/** Cursor style for each tool type */
-const TOOL_CURSORS: Record<ToolType, string> = {
-  brush: 'none',
-  eraser: 'none',
-  eyedropper: 'crosshair',
-  move: 'move',
-  select: 'crosshair',
-  lasso: 'crosshair',
-};
+import { useCursor } from './useCursor';
 
 export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,7 +20,7 @@ export function Canvas() {
 
   const [spacePressed, setSpacePressed] = useState(false);
   const [altPressed, setAltPressed] = useState(false);
-  const cursorPosRef = useRef<{ x: number; y: number } | null>(null);
+
   const brushCursorRef = useRef<HTMLDivElement>(null);
   const previousToolRef = useRef<string | null>(null);
 
@@ -69,6 +61,17 @@ export function Canvas() {
 
   const { scale, offsetX, offsetY, isPanning, zoomIn, zoomOut, pan, setIsPanning } =
     useViewportStore();
+
+  const { cursorStyle, showDomCursor } = useCursor({
+    currentTool,
+    currentSize,
+    scale,
+    showCrosshair,
+    spacePressed,
+    isPanning,
+    containerRef,
+    brushCursorRef,
+  });
 
   const { pushState, undo, redo } = useHistoryStore();
 
@@ -396,48 +399,6 @@ export function Canvas() {
     };
   }, [handleWheel]);
 
-  // Native pointermove listener for zero-lag cursor update
-  // This bypasses React's synthetic event system completely
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleNativePointerMove = (e: PointerEvent) => {
-      cursorPosRef.current = { x: e.clientX, y: e.clientY };
-      const cursor = brushCursorRef.current;
-      if (cursor) {
-        cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
-      }
-    };
-
-    const handleNativePointerLeave = () => {
-      cursorPosRef.current = null;
-      if (brushCursorRef.current) {
-        brushCursorRef.current.style.display = 'none';
-      }
-    };
-
-    const handleNativePointerEnter = (e: PointerEvent) => {
-      cursorPosRef.current = { x: e.clientX, y: e.clientY };
-      const cursor = brushCursorRef.current;
-      if (cursor) {
-        cursor.style.display = 'block';
-        cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
-      }
-    };
-
-    // Use passive: true for best performance (we don't need to preventDefault)
-    container.addEventListener('pointermove', handleNativePointerMove, { passive: true });
-    container.addEventListener('pointerleave', handleNativePointerLeave);
-    container.addEventListener('pointerenter', handleNativePointerEnter);
-
-    return () => {
-      container.removeEventListener('pointermove', handleNativePointerMove);
-      container.removeEventListener('pointerleave', handleNativePointerLeave);
-      container.removeEventListener('pointerenter', handleNativePointerEnter);
-    };
-  }, []);
-
   // 绘制插值后的点序列
   const drawPoints = useCallback(
     (points: Point[]) => {
@@ -688,79 +649,6 @@ export function Canvas() {
     [isPanning, setIsPanning, drawPoints, saveToHistory]
   );
 
-  // 计算当前在屏幕上的实际像素大小
-  const screenBrushSize = currentSize * scale;
-  // Windows下光标大小限制通常是 128px，为了安全我们设定一个保守阈值 (如 64px)
-  // 超过此大小时回退到 DOM 光标，否则浏览器会忽略自定义光标
-  const useHardwareCursor =
-    (currentTool === 'brush' || currentTool === 'eraser') &&
-    screenBrushSize <= 64 &&
-    !spacePressed &&
-    !isPanning;
-
-  // 生成 SVG 光标 URL
-  const cursorStyle = useRef<string>('auto');
-  useEffect(() => {
-    if (!useHardwareCursor) {
-      cursorStyle.current = TOOL_CURSORS[currentTool];
-      return;
-    }
-
-    const size = screenBrushSize;
-    const r = size / 2;
-    // 增加画布大小以容纳边框和准星，避免被裁剪
-    const canvasSize = Math.ceil(size + 4);
-    const center = canvasSize / 2;
-
-    // 构建 SVG
-    // 包含：黑白双色圆描边（保证所有背景可见）
-    let svgContent = `
-      <circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5"/>
-      <circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="rgba(0,0,0,0.8)" stroke-width="1"/>
-    `;
-
-    // 如果开启了 Crosshair，添加中心准星
-    if (showCrosshair) {
-      const crossSize = 8;
-      svgContent += `
-        <line x1="${center - crossSize}" y1="${center}" x2="${center + crossSize}" y2="${center}" stroke="black" stroke-width="2"/>
-        <line x1="${center - crossSize}" y1="${center}" x2="${center + crossSize}" y2="${center}" stroke="white" stroke-width="1"/>
-        <line x1="${center}" y1="${center - crossSize}" x2="${center}" y2="${center + crossSize}" stroke="black" stroke-width="2"/>
-        <line x1="${center}" y1="${center - crossSize}" x2="${center}" y2="${center + crossSize}" stroke="white" stroke-width="1"/>
-      `;
-    }
-
-    const svg = `
-      <svg width="${canvasSize}" height="${canvasSize}" viewBox="0 0 ${canvasSize} ${canvasSize}" xmlns="http://www.w3.org/2000/svg">
-        ${svgContent}
-      </svg>
-    `;
-
-    const cursorUrl = `data:image/svg+xml;base64,${btoa(svg)}`;
-    // 设置热点为中心
-    cursorStyle.current = `url("${cursorUrl}") ${center} ${center}, crosshair`;
-  }, [useHardwareCursor, screenBrushSize, showCrosshair, currentTool]);
-
-  // 根据模式设置光标
-  const getCursor = (): string => {
-    if (spacePressed || isPanning) return 'grab';
-    if (useHardwareCursor) return cursorStyle.current;
-
-    // Fallback logic for large brushes (DOM cursor)
-    if (showCrosshair && (currentTool === 'brush' || currentTool === 'eraser')) {
-      return 'crosshair';
-    }
-    return TOOL_CURSORS[currentTool];
-  };
-
-  // Show brush cursor for brush and eraser tools
-  // ONLY show DOM cursor if Hardware Cursor is NOT active (too large)
-  const showBrushCursor =
-    (currentTool === 'brush' || currentTool === 'eraser') &&
-    !spacePressed &&
-    !isPanning &&
-    !useHardwareCursor;
-
   // 计算 viewport 变换样式
   const viewportStyle: React.CSSProperties = {
     transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
@@ -776,7 +664,7 @@ export function Canvas() {
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
       // Note: onPointerEnter cursor handling is done by native event listener
-      style={{ cursor: getCursor() }}
+      style={{ cursor: cursorStyle }}
     >
       <div className="canvas-viewport" style={viewportStyle}>
         <canvas
@@ -787,7 +675,7 @@ export function Canvas() {
           data-testid="main-canvas"
         />
       </div>
-      {showBrushCursor && (
+      {showDomCursor && (
         <div
           ref={brushCursorRef}
           className="brush-cursor"
