@@ -18,6 +18,7 @@ export interface BrushRenderConfig {
   color: string;
   pressureSizeEnabled: boolean;
   pressureFlowEnabled: boolean;
+  pressureOpacityEnabled: boolean;
   pressureCurve: PressureCurve;
 }
 
@@ -104,6 +105,9 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
         const dabPressure = applyPressureCurve(dab.pressure, config.pressureCurve);
         const dabSize = config.pressureSizeEnabled ? config.size * dabPressure : config.size;
         const dabFlow = config.pressureFlowEnabled ? config.flow * dabPressure : config.flow;
+        const dabOpacity = config.pressureOpacityEnabled
+          ? config.opacity * dabPressure
+          : config.opacity;
 
         const dabParams: DabParams = {
           x: dab.x,
@@ -112,7 +116,7 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
           flow: dabFlow,
           hardness: config.hardness / 100, // Convert from 0-100 to 0-1
           color: config.color,
-          opacityCeiling: config.opacity, // Apply opacity ceiling during stamping for accurate preview
+          opacityCeiling: dabOpacity, // Apply opacity ceiling during stamping for accurate preview
         };
 
         buffer.stampDab(dabParams);

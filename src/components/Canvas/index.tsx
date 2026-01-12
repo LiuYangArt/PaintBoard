@@ -49,6 +49,7 @@ export function Canvas() {
     pressureCurve,
     pressureSizeEnabled,
     pressureFlowEnabled,
+    pressureOpacityEnabled,
     setCurrentSize,
     setBrushColor,
     setTool,
@@ -65,6 +66,7 @@ export function Canvas() {
     pressureCurve: s.pressureCurve,
     pressureSizeEnabled: s.pressureSizeEnabled,
     pressureFlowEnabled: s.pressureFlowEnabled,
+    pressureOpacityEnabled: s.pressureOpacityEnabled,
     setCurrentSize: s.setCurrentSize,
     setBrushColor: s.setBrushColor,
     setTool: s.setTool,
@@ -512,6 +514,7 @@ export function Canvas() {
       color: brushColor,
       pressureSizeEnabled,
       pressureFlowEnabled,
+      pressureOpacityEnabled,
       pressureCurve,
     };
   }, [
@@ -523,6 +526,7 @@ export function Canvas() {
     brushColor,
     pressureSizeEnabled,
     pressureFlowEnabled,
+    pressureOpacityEnabled,
     pressureCurve,
   ]);
 

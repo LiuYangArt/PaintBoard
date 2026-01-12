@@ -74,6 +74,8 @@ export function Toolbar() {
     togglePressureSize,
     pressureFlowEnabled,
     togglePressureFlow,
+    pressureOpacityEnabled,
+    togglePressureOpacity,
     showCrosshair,
     toggleCrosshair,
   } = useToolStore();
@@ -152,6 +154,11 @@ export function Toolbar() {
 
         <label className="setting">
           <span className="setting-label">Opacity</span>
+          <PressureToggle
+            enabled={pressureOpacityEnabled}
+            onToggle={togglePressureOpacity}
+            title="Pressure affects opacity"
+          />
           <input
             type="range"
             min="0.01"
