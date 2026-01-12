@@ -4,7 +4,7 @@
 
 # PaintBoard
 
-个人用绘画软件，支持 Wacom 压感输入，基于 Tauri + React + Rust 构建。
+个人用绘画软件，支持 Wacom 压感输入，基于 Tauri + React + Rust 构建。目前只支持windows平台。 
 
 ## 下载
 
