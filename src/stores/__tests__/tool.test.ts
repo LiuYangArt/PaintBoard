@@ -47,8 +47,9 @@ describe('ToolStore', () => {
       store.setBrushOpacity(2.0);
       expect(useToolStore.getState().brushOpacity).toBe(1);
 
+      // Minimum opacity is 0.01 (not 0) to ensure brush is always visible
       store.setBrushOpacity(-0.5);
-      expect(useToolStore.getState().brushOpacity).toBe(0);
+      expect(useToolStore.getState().brushOpacity).toBe(0.01);
     });
   });
 
