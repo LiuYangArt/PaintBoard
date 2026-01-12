@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
-import { LayerPanel } from './components/LayerPanel';
+import { RightPanel } from './components/RightPanel';
 import { TabletPanel } from './components/TabletPanel';
 import { useDocumentStore } from './stores/document';
 import { useTabletStore } from './stores/tablet';
@@ -84,7 +84,7 @@ function App() {
       <Toolbar />
       <main className="workspace">
         <Canvas />
-        <LayerPanel />
+        <RightPanel />
       </main>
       <TabletPanel />
     </div>

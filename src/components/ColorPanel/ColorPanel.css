@@ -1,0 +1,94 @@
+.color-panel {
+  padding: 12px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.color-panel h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.color-picker-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Customize react-colorful styles to match theme */
+.react-colorful {
+  width: 100% !important;
+  height: 200px !important;
+}
+
+.react-colorful__saturation {
+  border-radius: 4px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.react-colorful__hue {
+  border-radius: 4px;
+  height: 16px !important;
+  border: 1px solid var(--border-color);
+}
+
+.react-colorful__pointer {
+  width: 16px !important;
+  height: 16px !important;
+  border: 2px solid white !important;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+}
+
+.color-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-preview {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.hex-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0 8px;
+  flex: 1;
+  height: 28px;
+}
+
+.hex-prefix {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-right: 4px;
+  user-select: none;
+}
+
+.hex-input {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  width: 100%;
+  outline: none;
+  text-transform: uppercase;
+}
+
+.hex-input:focus {
+  outline: none;
+}
