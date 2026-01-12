@@ -219,7 +219,8 @@
 - [ ] 实现输入平滑 (Catmull-Rom / Bezier)
 - [ ] 实现距离累积盖印算法
 - [ ] 建立 Flow/Opacity 三级渲染管线 (Dab -> Stroke Buffer -> Layer)
-- [ ] 实现基础混合模式 (Normal, Multiply)
+- [ ] UI 界面，brush size/flow/opacity 各自有独立的slider。 slider旁边有单独的压感overide开关，开启后此参数必受压感影响。
+<!-- - [ ] 实现基础混合模式 (Normal, Multiply) -->
 
 #### 3.2 笔刷引擎扩展 (Phase 2)
 
