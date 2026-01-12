@@ -396,6 +396,48 @@ export function Canvas() {
     };
   }, [handleWheel]);
 
+  // Native pointermove listener for zero-lag cursor update
+  // This bypasses React's synthetic event system completely
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleNativePointerMove = (e: PointerEvent) => {
+      cursorPosRef.current = { x: e.clientX, y: e.clientY };
+      const cursor = brushCursorRef.current;
+      if (cursor) {
+        cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+      }
+    };
+
+    const handleNativePointerLeave = () => {
+      cursorPosRef.current = null;
+      if (brushCursorRef.current) {
+        brushCursorRef.current.style.display = 'none';
+      }
+    };
+
+    const handleNativePointerEnter = (e: PointerEvent) => {
+      cursorPosRef.current = { x: e.clientX, y: e.clientY };
+      const cursor = brushCursorRef.current;
+      if (cursor) {
+        cursor.style.display = 'block';
+        cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px) translate(-50%, -50%)`;
+      }
+    };
+
+    // Use passive: true for best performance (we don't need to preventDefault)
+    container.addEventListener('pointermove', handleNativePointerMove, { passive: true });
+    container.addEventListener('pointerleave', handleNativePointerLeave);
+    container.addEventListener('pointerenter', handleNativePointerEnter);
+
+    return () => {
+      container.removeEventListener('pointermove', handleNativePointerMove);
+      container.removeEventListener('pointerleave', handleNativePointerLeave);
+      container.removeEventListener('pointerenter', handleNativePointerEnter);
+    };
+  }, []);
+
   // 绘制插值后的点序列
   const drawPoints = useCallback(
     (points: Point[]) => {
@@ -506,15 +548,6 @@ export function Canvas() {
     [spacePressed, setIsPanning, scale, activeLayerId, currentTool, pickColorAt]
   );
 
-  // Direct DOM update for brush cursor position (bypasses React scheduler for zero-lag)
-  const updateBrushCursor = useCallback((clientX: number, clientY: number) => {
-    cursorPosRef.current = { x: clientX, y: clientY };
-    const cursor = brushCursorRef.current;
-    if (cursor) {
-      cursor.style.transform = `translate(${clientX}px, ${clientY}px) translate(-50%, -50%)`;
-    }
-  }, []);
-
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       // 获取所有合并事件（包括被浏览器合并的中间事件）
@@ -530,12 +563,11 @@ export function Canvas() {
         const deltaY = lastEvent.clientY - panStartRef.current.y;
         pan(deltaX, deltaY);
         panStartRef.current = { x: lastEvent.clientX, y: lastEvent.clientY };
-        updateBrushCursor(e.clientX, e.clientY);
+        // Note: cursor position is updated by native event listener
         return;
       }
 
-      // Update cursor position for brush size indicator
-      updateBrushCursor(e.clientX, e.clientY);
+      // Note: cursor position is updated by native event listener for zero-lag
 
       // 绘画模式
       if (!isDrawingRef.current) return;
@@ -619,7 +651,7 @@ export function Canvas() {
         }
       }
     },
-    [isPanning, pan, drawPoints, scale, updateBrushCursor]
+    [isPanning, pan, drawPoints, scale]
   );
 
   const handlePointerUp = useCallback(
@@ -683,19 +715,8 @@ export function Canvas() {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerLeave={(e) => {
-        handlePointerUp(e);
-        cursorPosRef.current = null;
-        if (brushCursorRef.current) {
-          brushCursorRef.current.style.display = 'none';
-        }
-      }}
-      onPointerEnter={(e) => {
-        updateBrushCursor(e.clientX, e.clientY);
-        if (brushCursorRef.current) {
-          brushCursorRef.current.style.display = 'block';
-        }
-      }}
+      onPointerLeave={handlePointerUp}
+      // Note: onPointerEnter cursor handling is done by native event listener
       style={{ cursor: getCursor() }}
     >
       <div className="canvas-viewport" style={viewportStyle}>
