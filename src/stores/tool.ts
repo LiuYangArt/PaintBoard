@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type ToolType = 'brush' | 'eraser' | 'eyedropper' | 'move' | 'select' | 'lasso';
+export type ToolType = 'brush' | 'eraser' | 'eyedropper' | 'move' | 'select' | 'lasso' | 'zoom';
 
 export type PressureCurve = 'linear' | 'soft' | 'hard' | 'sCurve';
 

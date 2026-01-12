@@ -10,6 +10,7 @@ import {
   ZoomOut,
   Crosshair,
   LucideIcon,
+  ZoomIn as ZoomIcon,
 } from 'lucide-react';
 import { useToolStore, ToolType, PressureCurve } from '@/stores/tool';
 import { useViewportStore } from '@/stores/viewport';
@@ -25,6 +26,7 @@ const TOOLS: { id: ToolType; label: string; icon: LucideIcon }[] = [
   { id: 'eyedropper', label: 'Eyedropper', icon: Pipette },
   { id: 'move', label: 'Move', icon: Move },
   { id: 'select', label: 'Select', icon: BoxSelect },
+  { id: 'zoom', label: 'Zoom', icon: ZoomIcon },
 ];
 
 const PRESSURE_CURVES: { id: PressureCurve; label: string }[] = [
