@@ -120,7 +120,7 @@ export class StrokeBuffer {
   }
 
   /**
-   * Stamp a circular dab onto the buffer with opacity ceiling support
+   * Stamp a circular dab onto the buffer with opacity ceiling and anti-aliasing
    */
   stampDab(params: DabParams): void {
     const { x, y, size, flow, hardness, color, opacityCeiling } = params;
@@ -132,11 +132,11 @@ export class StrokeBuffer {
 
     const rgb = hexToRgb(color);
 
-    // Calculate bounding box for pixel operations
-    const left = Math.max(0, Math.floor(x - radius));
-    const top = Math.max(0, Math.floor(y - radius));
-    const right = Math.min(this.width, Math.ceil(x + radius));
-    const bottom = Math.min(this.height, Math.ceil(y + radius));
+    // Calculate bounding box for pixel operations (add 1px margin for AA)
+    const left = Math.max(0, Math.floor(x - radius - 1));
+    const top = Math.max(0, Math.floor(y - radius - 1));
+    const right = Math.min(this.width, Math.ceil(x + radius + 1));
+    const bottom = Math.min(this.height, Math.ceil(y + radius + 1));
     const rectWidth = right - left;
     const rectHeight = bottom - top;
 
@@ -146,35 +146,44 @@ export class StrokeBuffer {
     const bufferData = this.ctx.getImageData(left, top, rectWidth, rectHeight);
     const maxAlpha = opacityCeiling !== undefined ? Math.round(opacityCeiling * 255) : 255;
 
+    // Anti-aliasing: smooth transition over ~1px at the edge
+    const aaWidth = Math.min(1.0, radius * 0.5); // AA width, max 1px, smaller for tiny brushes
+
     // Process each pixel in the dab region
     for (let py = 0; py < rectHeight; py++) {
       for (let px = 0; px < rectWidth; px++) {
         const worldX = left + px;
         const worldY = top + py;
 
-        // Calculate distance from dab center
+        // Calculate distance from dab center (sample at pixel center)
         const dx = worldX + 0.5 - x;
         const dy = worldY + 0.5 - y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist > radius) continue;
+        // Skip pixels clearly outside the brush (with AA margin)
+        if (dist > radius + aaWidth) continue;
 
         // Calculate dab alpha based on hardness
         let dabAlpha: number;
-        if (hardness >= 0.99) {
+        const innerRadius = radius * hardness;
+
+        if (dist <= innerRadius) {
+          // Inside hard core: full flow
           dabAlpha = flow;
+        } else if (dist <= radius) {
+          // Softness falloff zone
+          const t = (dist - innerRadius) / (radius - innerRadius);
+          dabAlpha = flow * (1 - t);
         } else {
-          const innerRadius = radius * hardness;
-          if (dist <= innerRadius) {
-            dabAlpha = flow;
-          } else {
-            // Linear falloff from inner to outer radius
-            const t = (dist - innerRadius) / (radius - innerRadius);
-            dabAlpha = flow * (1 - t);
-          }
+          // Anti-aliasing zone (radius to radius + aaWidth)
+          // Smooth edge coverage falloff
+          const edgeDist = dist - radius;
+          const coverage = Math.max(0, 1 - edgeDist / aaWidth);
+          // For hard brushes, apply AA to full flow; for soft, it's already fading
+          dabAlpha = flow * coverage * (hardness >= 0.99 ? 1 : 0);
         }
 
-        if (dabAlpha <= 0) continue;
+        if (dabAlpha <= 0.001) continue;
 
         const idx = (py * rectWidth + px) * 4;
 

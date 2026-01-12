@@ -27,8 +27,8 @@ export interface UseBrushRendererProps {
 }
 
 // Pressure fade-in settings to prevent heavy first dab from WinTab
-const FADE_IN_POINTS = 3;
-const FIRST_POINT_MAX_PRESSURE = 0.3;
+const FADE_IN_POINTS = 4;
+const FIRST_POINT_MAX_PRESSURE = 0.1;
 
 export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
   const strokeBufferRef = useRef<StrokeBuffer | null>(null);
