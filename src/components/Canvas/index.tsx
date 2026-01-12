@@ -28,7 +28,8 @@ export function Canvas() {
 
   const [spacePressed, setSpacePressed] = useState(false);
   const [altPressed, setAltPressed] = useState(false);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const cursorPosRef = useRef<{ x: number; y: number } | null>(null);
+  const brushCursorRef = useRef<HTMLDivElement>(null);
   const previousToolRef = useRef<string | null>(null);
 
   const { width, height, layers, activeLayerId, initDocument } = useDocumentStore((s) => ({
@@ -49,6 +50,7 @@ export function Canvas() {
     setCurrentSize,
     setBrushColor,
     setTool,
+    showCrosshair,
   } = useToolStore((s) => ({
     currentTool: s.currentTool,
     brushSize: s.brushSize,
@@ -59,6 +61,7 @@ export function Canvas() {
     setCurrentSize: s.setCurrentSize,
     setBrushColor: s.setBrushColor,
     setTool: s.setTool,
+    showCrosshair: s.showCrosshair,
   }));
 
   // Get current tool size (brush or eraser)
@@ -503,6 +506,15 @@ export function Canvas() {
     [spacePressed, setIsPanning, scale, activeLayerId, currentTool, pickColorAt]
   );
 
+  // Direct DOM update for brush cursor position (bypasses React scheduler for zero-lag)
+  const updateBrushCursor = useCallback((clientX: number, clientY: number) => {
+    cursorPosRef.current = { x: clientX, y: clientY };
+    const cursor = brushCursorRef.current;
+    if (cursor) {
+      cursor.style.transform = `translate(${clientX}px, ${clientY}px) translate(-50%, -50%)`;
+    }
+  }, []);
+
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       // 获取所有合并事件（包括被浏览器合并的中间事件）
@@ -518,12 +530,12 @@ export function Canvas() {
         const deltaY = lastEvent.clientY - panStartRef.current.y;
         pan(deltaX, deltaY);
         panStartRef.current = { x: lastEvent.clientX, y: lastEvent.clientY };
-        setCursorPos({ x: e.clientX, y: e.clientY });
+        updateBrushCursor(e.clientX, e.clientY);
         return;
       }
 
       // Update cursor position for brush size indicator
-      setCursorPos({ x: e.clientX, y: e.clientY });
+      updateBrushCursor(e.clientX, e.clientY);
 
       // 绘画模式
       if (!isDrawingRef.current) return;
@@ -607,7 +619,7 @@ export function Canvas() {
         }
       }
     },
-    [isPanning, pan, drawPoints, scale]
+    [isPanning, pan, drawPoints, scale, updateBrushCursor]
   );
 
   const handlePointerUp = useCallback(
@@ -653,15 +665,16 @@ export function Canvas() {
   // 根据模式设置光标
   const getCursor = (): string => {
     if (spacePressed || isPanning) return 'grab';
+    // Show crosshair when enabled for brush/eraser (along with brush cursor circle)
+    if (showCrosshair && (currentTool === 'brush' || currentTool === 'eraser')) {
+      return 'crosshair';
+    }
     return TOOL_CURSORS[currentTool];
   };
 
   // Show brush cursor for brush and eraser tools
   const showBrushCursor =
-    (currentTool === 'brush' || currentTool === 'eraser') &&
-    cursorPos &&
-    !spacePressed &&
-    !isPanning;
+    (currentTool === 'brush' || currentTool === 'eraser') && !spacePressed && !isPanning;
 
   return (
     <div
@@ -672,10 +685,16 @@ export function Canvas() {
       onPointerUp={handlePointerUp}
       onPointerLeave={(e) => {
         handlePointerUp(e);
-        setCursorPos(null);
+        cursorPosRef.current = null;
+        if (brushCursorRef.current) {
+          brushCursorRef.current.style.display = 'none';
+        }
       }}
       onPointerEnter={(e) => {
-        setCursorPos({ x: e.clientX, y: e.clientY });
+        updateBrushCursor(e.clientX, e.clientY);
+        if (brushCursorRef.current) {
+          brushCursorRef.current.style.display = 'block';
+        }
       }}
       style={{ cursor: getCursor() }}
     >
@@ -690,10 +709,9 @@ export function Canvas() {
       </div>
       {showBrushCursor && (
         <div
+          ref={brushCursorRef}
           className="brush-cursor"
           style={{
-            left: cursorPos.x,
-            top: cursorPos.y,
             width: currentSize * scale,
             height: currentSize * scale,
           }}
