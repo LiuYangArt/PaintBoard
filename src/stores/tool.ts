@@ -4,6 +4,9 @@ export type ToolType = 'brush' | 'eraser' | 'eyedropper' | 'move' | 'select' | '
 
 export type PressureCurve = 'linear' | 'soft' | 'hard' | 'sCurve';
 
+/** Clamp brush/eraser size to valid range */
+const clampSize = (size: number): number => Math.max(1, Math.min(500, size));
+
 /**
  * Apply pressure curve transformation
  * @param pressure - Raw pressure value (0-1)
@@ -84,7 +87,7 @@ export const useToolStore = create<ToolState>((set, get) => ({
   // Actions
   setTool: (tool) => set({ currentTool: tool }),
 
-  setBrushSize: (size) => set({ brushSize: Math.max(1, Math.min(500, size)) }),
+  setBrushSize: (size) => set({ brushSize: clampSize(size) }),
 
   setBrushOpacity: (opacity) => set({ brushOpacity: Math.max(0, Math.min(1, opacity)) }),
 
@@ -94,7 +97,7 @@ export const useToolStore = create<ToolState>((set, get) => ({
 
   setBackgroundColor: (color) => set({ backgroundColor: color }),
 
-  setEraserSize: (size) => set({ eraserSize: Math.max(1, Math.min(500, size)) }),
+  setEraserSize: (size) => set({ eraserSize: clampSize(size) }),
 
   getCurrentSize: () => {
     const state = get();
@@ -104,9 +107,9 @@ export const useToolStore = create<ToolState>((set, get) => ({
   setCurrentSize: (size) => {
     const state = get();
     if (state.currentTool === 'eraser') {
-      set({ eraserSize: Math.max(1, Math.min(500, size)) });
+      set({ eraserSize: clampSize(size) });
     } else {
-      set({ brushSize: Math.max(1, Math.min(500, size)) });
+      set({ brushSize: clampSize(size) });
     }
   },
 

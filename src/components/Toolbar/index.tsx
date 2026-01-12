@@ -15,6 +15,9 @@ import { useViewportStore } from '@/stores/viewport';
 import { useHistoryStore } from '@/stores/history';
 import './Toolbar.css';
 
+/** Common icon props for toolbar icons */
+const ICON_PROPS = { size: 18, strokeWidth: 1.5 } as const;
+
 const TOOLS: { id: ToolType; label: string; icon: LucideIcon }[] = [
   { id: 'brush', label: 'Brush', icon: Brush },
   { id: 'eraser', label: 'Eraser', icon: Eraser },
@@ -74,7 +77,7 @@ export function Toolbar() {
             onClick={() => setTool(tool.id)}
             title={tool.label}
           >
-            <tool.icon size={18} strokeWidth={1.5} />
+            <tool.icon {...ICON_PROPS} />
           </button>
         ))}
       </div>
@@ -140,13 +143,13 @@ export function Toolbar() {
 
       <div className="toolbar-section zoom-controls">
         <button onClick={() => zoomOut()} title="Zoom Out">
-          <ZoomOut size={18} strokeWidth={1.5} />
+          <ZoomOut {...ICON_PROPS} />
         </button>
         <button className="zoom-level" onClick={resetZoom} title="Reset Zoom (100%)">
           {zoomPercent}%
         </button>
         <button onClick={() => zoomIn()} title="Zoom In">
-          <ZoomIn size={18} strokeWidth={1.5} />
+          <ZoomIn {...ICON_PROPS} />
         </button>
       </div>
 
@@ -159,7 +162,7 @@ export function Toolbar() {
           onClick={handleUndo}
           title="Undo (Ctrl+Z)"
         >
-          <Undo2 size={18} strokeWidth={1.5} />
+          <Undo2 {...ICON_PROPS} />
         </button>
         <button
           data-testid="redo-btn"
@@ -167,7 +170,7 @@ export function Toolbar() {
           onClick={handleRedo}
           title="Redo (Ctrl+Y)"
         >
-          <Redo2 size={18} strokeWidth={1.5} />
+          <Redo2 {...ICON_PROPS} />
         </button>
       </div>
     </header>

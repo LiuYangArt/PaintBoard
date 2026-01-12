@@ -8,6 +8,16 @@ import { StrokeBuffer, Point } from '@/utils/interpolation';
 import { LayerRenderer } from '@/utils/layerRenderer';
 import './Canvas.css';
 
+/** Cursor style for each tool type */
+const TOOL_CURSORS: Record<ToolType, string> = {
+  brush: 'none',
+  eraser: 'none',
+  eyedropper: 'crosshair',
+  move: 'move',
+  select: 'crosshair',
+  lasso: 'crosshair',
+};
+
 export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -279,13 +289,13 @@ export function Canvas() {
       if (e.code === 'BracketLeft') {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 5;
-        setCurrentSize(Math.max(1, currentSize - step));
+        setCurrentSize(currentSize - step);
         return;
       }
       if (e.code === 'BracketRight') {
         e.preventDefault();
         const step = e.shiftKey ? 10 : 5;
-        setCurrentSize(Math.min(500, currentSize + step));
+        setCurrentSize(currentSize + step);
         return;
       }
 
@@ -641,13 +651,9 @@ export function Canvas() {
   };
 
   // 根据模式设置光标
-  const getCursor = () => {
+  const getCursor = (): string => {
     if (spacePressed || isPanning) return 'grab';
-    if (currentTool === 'eyedropper') return 'crosshair';
-    if (currentTool === 'move') return 'move';
-    // Hide cursor for brush/eraser - we show custom cursor
-    if (currentTool === 'brush' || currentTool === 'eraser') return 'none';
-    return 'crosshair';
+    return TOOL_CURSORS[currentTool];
   };
 
   // Show brush cursor for brush and eraser tools
