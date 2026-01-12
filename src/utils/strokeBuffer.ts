@@ -1,5 +1,5 @@
 /**
- * StrokeBuffer - Frontend implementation of the three-level rendering pipeline
+ * StrokeAccumulator - Frontend implementation of the three-level rendering pipeline
  *
  * This implements the Flow/Opacity separation mechanism:
  * - Flow: Per-dab opacity, accumulates within a stroke
@@ -7,7 +7,7 @@
  *
  * Architecture:
  * 1. Dab Level: Individual brush stamps with Flow-controlled alpha
- * 2. Stroke Buffer: Accumulates dabs within a single stroke
+ * 2. Stroke Accumulator: Accumulates dabs within a single stroke
  * 3. Layer Level: Composites stroke with Opacity as ceiling
  */
 
@@ -44,9 +44,9 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 /**
- * StrokeBuffer class for accumulating dabs within a single stroke
+ * StrokeAccumulator class for accumulating dabs within a single stroke
  */
-export class StrokeBuffer {
+export class StrokeAccumulator {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private width: number;
@@ -62,7 +62,7 @@ export class StrokeBuffer {
     this.canvas.height = height;
     const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
-      throw new Error('Failed to create 2D context for StrokeBuffer');
+      throw new Error('Failed to create 2D context for StrokeAccumulator');
     }
     this.ctx = ctx;
     this.clear();

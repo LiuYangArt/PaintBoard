@@ -10,6 +10,7 @@ import './Canvas.css';
 
 import { useCursor } from './useCursor';
 import { useBrushRenderer, BrushRenderConfig } from './useBrushRenderer';
+import { getEffectiveInputData } from './inputUtils';
 
 export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -96,7 +97,7 @@ export function Canvas() {
   // Initialize brush renderer for Flow/Opacity three-level pipeline
   const {
     beginStroke: beginBrushStroke,
-    processPoint: processBrushPoint,
+    processPoint: processBrushPoint, // Rename to match new logic
     endStroke: endBrushStroke,
     getPreviewCanvas,
     isStrokeActive,
@@ -776,6 +777,8 @@ export function Canvas() {
       const rect = canvas.getBoundingClientRect();
       const tabletState = useTabletStore.getState();
       const isWinTabActive = tabletState.isStreaming && tabletState.backend === 'WinTab';
+      // Drain input buffer once per frame/event-batch (outside the loop)
+      const bufferedPoints = isWinTabActive ? drainPointBuffer() : [];
 
       // 遍历所有合并事件，恢复完整输入轨迹
       for (const evt of coalescedEvents) {
@@ -783,57 +786,13 @@ export function Canvas() {
         const canvasX = (evt.clientX - rect.left) / scale;
         const canvasY = (evt.clientY - rect.top) / scale;
 
-        // 获取压力数据
-        let pressure: number;
-        let tiltX: number;
-        let tiltY: number;
-
-        if (isWinTabActive) {
-          // WinTab 模式：从缓冲区获取最新的压力数据
-          // 消费所有缓冲的点，使用最后一个有效压力值
-          const bufferedPoints = drainPointBuffer();
-          let latestPressure = 0;
-          let latestTiltX = 0;
-          let latestTiltY = 0;
-
-          // 找到最后一个有压力的点
-          for (let i = bufferedPoints.length - 1; i >= 0; i--) {
-            const p = bufferedPoints[i];
-            if (p && p.pressure > 0) {
-              latestPressure = p.pressure;
-              latestTiltX = p.tilt_x;
-              latestTiltY = p.tilt_y;
-              break;
-            }
-          }
-
-          // 如果缓冲区没有有效数据，使用 currentPoint
-          if (
-            latestPressure === 0 &&
-            tabletState.currentPoint &&
-            tabletState.currentPoint.pressure > 0
-          ) {
-            latestPressure = tabletState.currentPoint.pressure;
-            latestTiltX = tabletState.currentPoint.tilt_x;
-            latestTiltY = tabletState.currentPoint.tilt_y;
-          }
-
-          // 如果 WinTab 没有有效压力，回退到 PointerEvent
-          if (latestPressure > 0) {
-            pressure = latestPressure;
-            tiltX = latestTiltX;
-            tiltY = latestTiltY;
-          } else {
-            pressure = evt.pressure > 0 ? evt.pressure : 0.5;
-            tiltX = (evt as PointerEvent).tiltX ?? 0;
-            tiltY = (evt as PointerEvent).tiltY ?? 0;
-          }
-        } else {
-          // PointerEvent 模式
-          pressure = evt.pressure > 0 ? evt.pressure : 0.5;
-          tiltX = (evt as PointerEvent).tiltX ?? 0;
-          tiltY = (evt as PointerEvent).tiltY ?? 0;
-        }
+        // Resolve input pressure/tilt (handling WinTab buffering if active)
+        const { pressure, tiltX, tiltY } = getEffectiveInputData(
+          evt,
+          isWinTabActive,
+          bufferedPoints,
+          tabletState.currentPoint
+        );
 
         // For brush tool, use the new three-level pipeline
         if (currentTool === 'brush') {

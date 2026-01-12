@@ -6,7 +6,7 @@
  */
 
 import { useRef, useCallback } from 'react';
-import { StrokeBuffer, BrushStamper, DabParams } from '@/utils/strokeBuffer';
+import { StrokeAccumulator, BrushStamper, DabParams } from '@/utils/strokeBuffer';
 import { applyPressureCurve, PressureCurve } from '@/stores/tool';
 
 export interface BrushRenderConfig {
@@ -32,7 +32,7 @@ const FADE_IN_POINTS = 4;
 const FIRST_POINT_MAX_PRESSURE = 0.1;
 
 export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
-  const strokeBufferRef = useRef<StrokeBuffer | null>(null);
+  const strokeBufferRef = useRef<StrokeAccumulator | null>(null);
   const stamperRef = useRef<BrushStamper>(new BrushStamper());
   const pointCountRef = useRef<number>(0);
 
@@ -57,7 +57,7 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
   // Initialize or resize stroke buffer
   const ensureStrokeBuffer = useCallback(() => {
     if (!strokeBufferRef.current) {
-      strokeBufferRef.current = new StrokeBuffer(width, height);
+      strokeBufferRef.current = new StrokeAccumulator(width, height);
     } else {
       const dims = strokeBufferRef.current.getDimensions();
       if (dims.width !== width || dims.height !== height) {
