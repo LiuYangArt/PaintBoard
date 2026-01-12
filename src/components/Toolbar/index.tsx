@@ -45,8 +45,6 @@ export function Toolbar() {
     setCurrentSize,
     brushOpacity,
     setBrushOpacity,
-    brushColor,
-    setBrushColor,
     pressureCurve,
     setPressureCurve,
     showCrosshair,
@@ -137,19 +135,6 @@ export function Toolbar() {
         >
           <Crosshair {...ICON_PROPS} />
         </button>
-      </div>
-
-      <div className="toolbar-divider" />
-
-      <div className="toolbar-section color-picker">
-        <input
-          type="color"
-          value={brushColor}
-          onChange={(e) => setBrushColor(e.target.value)}
-          className="color-input"
-          title="Brush Color"
-        />
-        <span className="color-hex">{brushColor}</span>
       </div>
 
       <div className="toolbar-spacer" />

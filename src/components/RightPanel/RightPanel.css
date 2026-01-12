@@ -1,0 +1,17 @@
+.right-panel {
+  width: 280px;
+  background-color: var(--bg-secondary);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Ensure LayerPanel takes remaining space */
+.right-panel .layer-panel {
+  flex: 1;
+  border-left: none; /* RightPanel handles the border */
+  width: 100%;
+}
