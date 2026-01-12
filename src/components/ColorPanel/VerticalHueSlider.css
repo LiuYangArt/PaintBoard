@@ -1,0 +1,36 @@
+.vertical-hue-slider {
+  position: relative;
+  width: 16px;
+  height: 100%;
+  border-radius: 0;
+  border: 1px solid var(--border-color);
+  /* Hue Gradient: Top (0deg Red) to Bottom (360deg Red) */
+  background: linear-gradient(
+    to bottom,
+    #ff0000 0%,
+    #ffff00 17%,
+    #00ff00 33%,
+    #00ffff 50%,
+    #0000ff 67%,
+    #ff00ff 83%,
+    #ff0000 100%
+  );
+  cursor: pointer;
+  touch-action: none; /* Prevent scrolling */
+  user-select: none;
+}
+
+.vertical-hue-pointer {
+  position: absolute;
+  left: -2px; /* Hangs out a bit? Or keep centered? */
+  right: -2px;
+  /* Centering vertically on the point */
+  height: 8px;
+  margin-top: -4px; /* Half height */
+  border: 1px solid white;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  background: transparent;
+  border-radius: 2px;
+  pointer-events: none; /* Let clicks pass through to container */
+  z-index: 10;
+}
