@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Canvas } from './components/Canvas';
 import { Toolbar } from './components/Toolbar';
-import { RightPanel } from './components/RightPanel';
 import { TabletPanel } from './components/TabletPanel';
 import { useDocumentStore } from './stores/document';
 import { useTabletStore } from './stores/tablet';
@@ -78,13 +77,37 @@ function App() {
   const openPanel = usePanelStore((s) => s.openPanel);
 
   useEffect(() => {
+    // 1. Tools Panel (Top Left)
     registerPanel({
-      id: 'debug-panel',
-      title: 'Debug Controls',
-      defaultGeometry: { x: 100, y: 100, width: 300, height: 200 },
+      id: 'tools-panel',
+      title: 'Tools',
+      defaultGeometry: { x: 20, y: 100, width: 80, height: 260 },
+      minWidth: 80,
+      minHeight: 200,
     });
-    // Auto open for dev
-    openPanel('debug-panel');
+
+    // 2. Color Panel (Top Right, mimicking existing right panel top)
+    registerPanel({
+      id: 'color-panel',
+      title: 'Color',
+      defaultGeometry: { x: window.innerWidth - 300, y: 80, width: 280, height: 320 },
+      minWidth: 200,
+      minHeight: 200,
+    });
+
+    // 3. Layer Panel (Bottom Right)
+    registerPanel({
+      id: 'layer-panel',
+      title: 'Layers',
+      defaultGeometry: { x: window.innerWidth - 300, y: 420, width: 280, height: 400 },
+      minWidth: 200,
+      minHeight: 200,
+    });
+
+    // Auto open defaults
+    openPanel('tools-panel');
+    openPanel('color-panel');
+    openPanel('layer-panel');
   }, [registerPanel, openPanel]);
 
   if (!isReady) {
@@ -100,7 +123,6 @@ function App() {
       <Toolbar />
       <main className="workspace">
         <Canvas />
-        <RightPanel />
         <PanelLayer />
       </main>
       <TabletPanel />
