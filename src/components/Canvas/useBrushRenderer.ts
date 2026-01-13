@@ -8,6 +8,7 @@
 import { useRef, useCallback } from 'react';
 import { StrokeAccumulator, BrushStamper, DabParams, MaskType } from '@/utils/strokeBuffer';
 import { applyPressureCurve, PressureCurve } from '@/stores/tool';
+import { HARD_BRUSH_THRESHOLD } from '@/constants';
 
 export interface BrushRenderConfig {
   size: number;
@@ -88,9 +89,9 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
         const dabFlow = config.pressureFlowEnabled ? config.flow * dabPressure : config.flow;
 
         // Hybrid Strategy:
-        // - Hard Brushes (>= 95%): Use Opacity Ceiling (Clamp) to maintain solid edges.
-        // - Soft Brushes (< 95%): Use Post-Multiply to allow smooth gradients.
-        const isHardBrush = config.hardness >= 95;
+        // - Hard Brushes (>= Threshold): Use Opacity Ceiling (Clamp) to maintain solid edges.
+        // - Soft Brushes (< Threshold): Use Post-Multiply to allow smooth gradients.
+        const isHardBrush = config.hardness >= HARD_BRUSH_THRESHOLD;
         strokeModeRef.current = isHardBrush ? 'hard' : 'soft';
 
         let finalFlow = dabFlow;

@@ -232,97 +232,10 @@ export class StrokeAccumulator {
         const normY = localY / radiusY;
         const normDist = Math.sqrt(normX * normX + normY * normY);
 
-        // Calculate dab alpha based on hardness
-        // Soft brushes use Gaussian falloff that extends beyond nominal edge
-        let dabAlpha: number;
+        // Calculate dab alpha based on hardness and mask type
+        const dabAlpha = this.calculateMaskAlpha(normDist, radiusX, flow, hardness, maskType, fade);
 
-        if (hardness >= 0.99) {
-          // Hard brush: full alpha inside, AA at edge
-          // Improved AA: linear falloff over 1px at the exact physical edge
-          const physicalDist = normDist * radiusX;
-          const distFromEdge = physicalDist - radiusX;
-
-          if (distFromEdge > 1.0) {
-            continue; // Outside AA zone
-          } else if (distFromEdge > 0.0) {
-            // Anti-aliasing zone (0 to 1px outside nominal radius)
-            // Linear falloff from 1.0 to 0.0 over 1px
-            dabAlpha = flow * (1.0 - distFromEdge);
-          } else {
-            dabAlpha = flow;
-          }
-        } else if (maskType === 'gaussian') {
-          // Krita-style Gaussian (erf-based)
-          // Use enhanced fade calculation (up to 2.0)
-          // Avoid 0/1 singularities exactly like Krita
-          const safeFade = Math.max(1e-6, Math.min(2.0, fade));
-
-          // Krita's magic constants
-          const SQRT_2 = Math.SQRT2;
-          // center computation from KisGaussCircleMaskGenerator
-          const center = (2.5 * (6761.0 * safeFade - 10000.0)) / (SQRT_2 * 6761.0 * safeFade);
-          // alphafactor computation
-          const alphafactor = 255.0 / (2.0 * erf(center));
-
-          // distfactor computation
-          // Note: radiusX is effectiveSrcWidth / 2
-          const distfactor = (SQRT_2 * 12500.0) / (6761.0 * safeFade * radiusX);
-
-          // Calculate scaled distance
-          const physicalDist = normDist * radiusX;
-
-          // Anti-aliasing logic (Krita KisAntialiasingFadeMaker style)
-          // For brushes with significant hardness, we force linear bleed at the edge (1px)
-          // to prevent aliasing.
-          const aaStart = radiusX - 1.0;
-
-          if (hardness > 0.5 && physicalDist > aaStart) {
-            // Inside the 1px edge processing zone
-            if (physicalDist > radiusX) {
-              // Outside nominal radius: cut off
-              continue;
-            }
-
-            // Calculate alpha at aaStart to ensure continuity
-            const distAtStart = aaStart * distfactor;
-            const valAtStart =
-              alphafactor * (erf(distAtStart + center) - erf(distAtStart - center));
-            const baseAlphaAtStart = Math.max(0, Math.min(1, valAtStart / 255.0));
-
-            // Linear interpolation from baseAlphaAtStart down to 0 at radiusX
-            // dist goes from aaStart to radiusX -> t goes 0 to 1
-            const t = physicalDist - aaStart;
-            dabAlpha = flow * baseAlphaAtStart * (1.0 - t);
-          } else {
-            // Normal Gaussian calculation
-            const scaledDist = physicalDist * distfactor;
-            const val = alphafactor * (erf(scaledDist + center) - erf(scaledDist - center));
-            const rawAlpha = Math.max(0, Math.min(1, val / 255.0));
-
-            dabAlpha = flow * rawAlpha;
-          }
-        } else {
-          // 'default': Simple Gaussian exp(-k*t²) (Original PaintBoard implementation)
-          // Soft brush: Gaussian falloff from center, extends beyond nominal edge
-          // Map hardness to control inner core vs. falloff zone
-          const innerRadius = hardness; // 0-1, where falloff begins
-
-          // For soft brushes, extend processing area beyond nominal radius
-          const maxExtent = 1.5; // Process up to 1.5x nominal radius for soft brushes
-          if (normDist > maxExtent) {
-            continue;
-          }
-
-          if (normDist <= innerRadius) {
-            // Inside hard core
-            dabAlpha = flow;
-          } else {
-            // Gaussian falloff zone
-            const t = (normDist - innerRadius) / (1 - innerRadius);
-            const gaussianK = 2.5;
-            dabAlpha = flow * Math.exp(-gaussianK * t * t);
-          }
-        }
+        if (dabAlpha <= 0.001) continue;
 
         if (dabAlpha <= 0.001) continue;
 
@@ -503,6 +416,110 @@ export class StrokeAccumulator {
    */
   getDimensions(): { width: number; height: number } {
     return { width: this.width, height: this.height };
+  }
+
+  /**
+   * Calculate dab alpha based on hardness and mask type
+   */
+  private calculateMaskAlpha(
+    normDist: number,
+    radiusX: number,
+    flow: number,
+    hardness: number,
+    maskType: string,
+    fade: number
+  ): number {
+    let dabAlpha: number;
+
+    if (hardness >= 0.99) {
+      // Hard brush: full alpha inside, AA at edge
+      // Improved AA: linear falloff over 1px at the exact physical edge
+      const physicalDist = normDist * radiusX;
+      const distFromEdge = physicalDist - radiusX;
+
+      if (distFromEdge > 1.0) {
+        return 0; // Outside AA zone
+      } else if (distFromEdge > 0.0) {
+        // Anti-aliasing zone (0 to 1px outside nominal radius)
+        // Linear falloff from 1.0 to 0.0 over 1px
+        dabAlpha = flow * (1.0 - distFromEdge);
+      } else {
+        dabAlpha = flow;
+      }
+    } else if (maskType === 'gaussian') {
+      // Krita-style Gaussian (erf-based)
+      // Use enhanced fade calculation (up to 2.0)
+      // Avoid 0/1 singularities exactly like Krita
+      const safeFade = Math.max(1e-6, Math.min(2.0, fade));
+
+      // Krita's magic constants
+      const SQRT_2 = Math.SQRT2;
+      // center computation from KisGaussCircleMaskGenerator
+      const center = (2.5 * (6761.0 * safeFade - 10000.0)) / (SQRT_2 * 6761.0 * safeFade);
+      // alphafactor computation
+      const alphafactor = 255.0 / (2.0 * erf(center));
+
+      // distfactor computation
+      // Note: radiusX is effectiveSrcWidth / 2
+      const distfactor = (SQRT_2 * 12500.0) / (6761.0 * safeFade * radiusX);
+
+      // Calculate scaled distance
+      const physicalDist = normDist * radiusX;
+
+      // Anti-aliasing logic (Krita KisAntialiasingFadeMaker style)
+      // For brushes with significant hardness, we force linear bleed at the edge (1px)
+      // to prevent aliasing.
+      const aaStart = radiusX - 1.0;
+
+      if (hardness > 0.5 && physicalDist > aaStart) {
+        // Inside the 1px edge processing zone
+        if (physicalDist > radiusX) {
+          // Outside nominal radius: cut off
+          return 0;
+        }
+
+        // Calculate alpha at aaStart to ensure continuity
+        const distAtStart = aaStart * distfactor;
+        const valAtStart = alphafactor * (erf(distAtStart + center) - erf(distAtStart - center));
+        const baseAlphaAtStart = Math.max(0, Math.min(1, valAtStart / 255.0));
+
+        // Linear interpolation from baseAlphaAtStart down to 0 at radiusX
+        // dist goes from aaStart to radiusX -> t goes 0 to 1
+        const t = physicalDist - aaStart;
+        dabAlpha = flow * baseAlphaAtStart * (1.0 - t);
+      } else {
+        // Normal Gaussian calculation
+        const scaledDist = physicalDist * distfactor;
+        const val = alphafactor * (erf(scaledDist + center) - erf(scaledDist - center));
+        // Use double precision equivalent in JS (number is double)
+        const rawAlpha = Math.max(0, Math.min(1, val / 255.0));
+
+        dabAlpha = flow * rawAlpha;
+      }
+    } else {
+      // 'default': Simple Gaussian exp(-k*t²) (Original PaintBoard implementation)
+      // Soft brush: Gaussian falloff from center, extends beyond nominal edge
+      // Map hardness to control inner core vs. falloff zone
+      const innerRadius = hardness; // 0-1, where falloff begins
+
+      // For soft brushes, extend processing area beyond nominal radius
+      const maxExtent = 1.5; // Process up to 1.5x nominal radius for soft brushes
+      if (normDist > maxExtent) {
+        return 0;
+      }
+
+      if (normDist <= innerRadius) {
+        // Inside hard core
+        dabAlpha = flow;
+      } else {
+        // Gaussian falloff zone
+        const t = (normDist - innerRadius) / (1 - innerRadius);
+        const gaussianK = 2.5;
+        dabAlpha = flow * Math.exp(-gaussianK * t * t);
+      }
+    }
+
+    return dabAlpha;
   }
 
   /**

@@ -11,6 +11,7 @@ import './Canvas.css';
 import { useCursor } from './useCursor';
 import { useBrushRenderer, BrushRenderConfig } from './useBrushRenderer';
 import { getEffectiveInputData } from './inputUtils';
+import { HARD_BRUSH_THRESHOLD } from '@/constants';
 
 export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -575,9 +576,9 @@ export function Canvas() {
       if (previewCanvas) {
         ctx.save();
         // Hybrid Strategy Preview Sync:
-        // - Hard Brushes (>= 95): Opacity uses Clamp mode (burned into buffer). Render with alpha 1.0.
-        // - Soft Brushes (< 95): Opacity uses Post-Multiply mode. Render with alpha = brushOpacity.
-        const isHardBrush = brushHardness >= 95;
+        // - Hard Brushes (>= Threshold): Opacity uses Clamp mode (burned into buffer). Render with alpha 1.0.
+        // - Soft Brushes (< Threshold): Opacity uses Post-Multiply mode. Render with alpha = brushOpacity.
+        const isHardBrush = brushHardness >= HARD_BRUSH_THRESHOLD;
         const previewOpacity = isHardBrush ? 1.0 : Math.max(0, Math.min(1, brushOpacity));
 
         ctx.globalAlpha = previewOpacity;
