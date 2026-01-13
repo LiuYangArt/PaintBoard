@@ -21,7 +21,7 @@ export interface DabParams {
   hardness: number; // Edge hardness (0-1)
   maskType?: MaskType; // Mask type: 'gaussian' (erf-based, default) or 'default' (simple)
   color: string; // Hex color
-  opacityCeiling?: number; // Optional opacity ceiling (0-1), if set, limits max alpha
+  // opacityCeiling removed - opacity is now handled at stroke composition level
   roundness?: number; // Brush roundness (0-1, 1 = circle, <1 = ellipse)
   angle?: number; // Brush angle in degrees (0-360)
 }
@@ -159,7 +159,6 @@ export class StrokeAccumulator {
       hardness,
       maskType = 'gaussian', // Default to Krita-style erf Gaussian
       color,
-      opacityCeiling,
       roundness = 1,
       angle = 0,
     } = params;
@@ -171,15 +170,17 @@ export class StrokeAccumulator {
     // Use the larger radius for calculations
     const maxRadius = Math.max(radiusX, radiusY);
 
+    // Krita-style Gaussian logic adjustments for softer edges
+    const fade = maskType === 'gaussian' ? (1.0 - hardness) * 2.0 : 0; // Enhance fade range for smoother falloff
+
     // Dynamic extent multiplier based on mask type
     let extentMultiplier: number;
     if (hardness >= 0.99) {
       extentMultiplier = 1.0;
     } else if (maskType === 'gaussian') {
       // Gaussian (erf) mask decays much faster than simple exp()
-      // Hardness 0 (Fade 1) needs ~1.5x radius to decay fully
-      // Hardness 0.5 needs less
-      extentMultiplier = 1.0 + 0.5 * (1 - hardness);
+      // Extend calculation area significantly for soft brushes
+      extentMultiplier = 1.0 + fade;
     } else {
       // Default simple Gaussian: 1.5x fallback
       extentMultiplier = 1.5;
@@ -209,9 +210,6 @@ export class StrokeAccumulator {
 
     // Get current buffer data for the dab region
     const bufferData = this.ctx.getImageData(left, top, rectWidth, rectHeight);
-
-    // Anti-aliasing: smooth transition over ~1px at the edge
-    const maxAlphaFloat = opacityCeiling !== undefined ? opacityCeiling : 1.0;
 
     // Process each pixel in the dab region
     for (let py = 0; py < rectHeight; py++) {
@@ -254,10 +252,9 @@ export class StrokeAccumulator {
           }
         } else if (maskType === 'gaussian') {
           // Krita-style Gaussian (erf-based)
-          // Convert hardness (0-1) to fade (1-0 inverted, clamped)
-          const fade = 1.0 - hardness;
+          // Use enhanced fade calculation (up to 2.0)
           // Avoid 0/1 singularities exactly like Krita
-          const safeFade = Math.max(1e-6, Math.min(1 - 1e-6, fade));
+          const safeFade = Math.max(1e-6, Math.min(2.0, fade));
 
           // Krita's magic constants
           const SQRT_2 = Math.SQRT2;
@@ -336,23 +333,14 @@ export class StrokeAccumulator {
         const dstB = bufferData.data[idx + 2] ?? 0;
         const dstA = (bufferData.data[idx + 3] ?? 0) / 255;
 
-        // If destination already at opacity ceiling, skip this pixel
-        // This prevents color artifacts from alpha clamping
-        if (opacityCeiling !== undefined && dstA >= opacityCeiling - 0.001) {
-          continue;
-        }
-
         // Porter-Duff "over" compositing
+        // Allow alpha to accumulate naturally up to 1.0
+        // Opacity ceiling is NOT applied here to allow soft gradients to accumulate correctly
         const srcA = dabAlpha;
-        let outA = srcA + dstA * (1 - srcA);
-
-        // Apply opacity ceiling BEFORE color calculation to avoid brightening
-        if (outA > maxAlphaFloat) {
-          outA = maxAlphaFloat;
-        }
+        const outA = srcA + dstA * (1 - srcA);
 
         if (outA > 0) {
-          // Recalculate effective source contribution after clamping
+          // Recalculate effective source contribution
           // effectiveSrcA is how much of the source actually contributes
           const effectiveSrcA = outA - dstA * (1 - srcA);
 
@@ -421,17 +409,18 @@ export class StrokeAccumulator {
     // Get layer data
     const layerData = layerCtx.getImageData(rect.left, rect.top, rectWidth, rectHeight);
 
-    // Apply opacity ceiling and composite
-    const opacityCeiling = Math.round(opacity * 255);
+    // Apply opacity multiplier (Post-Multiply)
+    // The opacity controls the layer-level accumulation, not the dab-level clamping
+    const opacityFloat = Math.max(0, Math.min(1, opacity));
 
     for (let i = 0; i < strokeData.data.length; i += 4) {
       const strokeAlpha = strokeData.data[i + 3] ?? 0;
 
       if (strokeAlpha === 0) continue;
 
-      // Apply opacity ceiling
-      const clampedAlpha = Math.min(strokeAlpha, opacityCeiling);
-      const srcAlpha = clampedAlpha / 255;
+      // Apply opacity scaling
+      const scaledAlpha = strokeAlpha * opacityFloat;
+      const srcAlpha = scaledAlpha / 255;
 
       // Get stroke color (unpremultiply if needed)
       const srcR = strokeData.data[i] ?? 0;

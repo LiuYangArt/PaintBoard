@@ -573,10 +573,13 @@ export function Canvas() {
     if (isStrokeActive()) {
       const previewCanvas = getPreviewCanvas();
       if (previewCanvas) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, brushOpacity));
         ctx.drawImage(previewCanvas, 0, 0);
+        ctx.restore();
       }
     }
-  }, [width, height, isStrokeActive, getPreviewCanvas]);
+  }, [width, height, isStrokeActive, getPreviewCanvas, brushOpacity]);
 
   // Process a single point through the brush renderer (for brush tool)
   const processBrushPointWithConfig = useCallback(

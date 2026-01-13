@@ -84,9 +84,7 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
         const dabPressure = applyPressureCurve(dab.pressure, config.pressureCurve);
         const dabSize = config.pressureSizeEnabled ? config.size * dabPressure : config.size;
         const dabFlow = config.pressureFlowEnabled ? config.flow * dabPressure : config.flow;
-        const dabOpacity = config.pressureOpacityEnabled
-          ? config.opacity * dabPressure
-          : config.opacity;
+        // Opacity is now handled at endStroke / preview level, not per-dab ceiling
 
         const dabParams: DabParams = {
           x: dab.x,
@@ -96,7 +94,6 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
           hardness: config.hardness / 100, // Convert from 0-100 to 0-1
           maskType: config.maskType,
           color: config.color,
-          opacityCeiling: dabOpacity, // Apply opacity ceiling during stamping for accurate preview
           roundness: config.roundness / 100, // Convert from 0-100 to 0-1
           angle: config.angle,
         };
