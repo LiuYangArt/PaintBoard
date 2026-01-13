@@ -143,12 +143,14 @@ export class StrokeAccumulator {
     const cosA = Math.cos(-angleRad); // Negative for inverse rotation
     const sinA = Math.sin(-angleRad);
 
-    // Calculate bounding box for pixel operations (add 1px margin for AA)
-    // Use maxRadius for bounding box to account for rotation
-    const left = Math.max(0, Math.floor(x - maxRadius - 1));
-    const top = Math.max(0, Math.floor(y - maxRadius - 1));
-    const right = Math.min(this.width, Math.ceil(x + maxRadius + 1));
-    const bottom = Math.min(this.height, Math.ceil(y + maxRadius + 1));
+    // Calculate bounding box for pixel operations
+    // For soft brushes, extend beyond nominal radius (1.5x) for smooth falloff
+    const extentMultiplier = hardness >= 0.99 ? 1.0 : 1.5;
+    const effectiveRadius = maxRadius * extentMultiplier + 1; // +1 for AA margin
+    const left = Math.max(0, Math.floor(x - effectiveRadius));
+    const top = Math.max(0, Math.floor(y - effectiveRadius));
+    const right = Math.min(this.width, Math.ceil(x + effectiveRadius));
+    const bottom = Math.min(this.height, Math.ceil(y + effectiveRadius));
     const rectWidth = right - left;
     const rectHeight = bottom - top;
 
@@ -181,41 +183,44 @@ export class StrokeAccumulator {
         const normY = localY / radiusY;
         const normDist = Math.sqrt(normX * normX + normY * normY);
 
-        // Skip pixels clearly outside the brush (with AA margin)
-        if (normDist > 1 + aaWidth / radiusX) continue;
-
-        // Calculate dab alpha based on hardness using Gaussian-like falloff
-        // PS uses a Gaussian curve for soft brushes, not linear falloff
+        // Calculate dab alpha based on hardness
+        // Soft brushes use Gaussian falloff that extends beyond nominal edge
         let dabAlpha: number;
 
-        if (normDist > 1) {
-          // Anti-aliasing zone (beyond edge)
-          const edgeNormDist = normDist - 1;
-          const coverage = Math.max(0, 1 - edgeNormDist / (aaWidth / radiusX));
-          // For hard brushes, apply AA to full flow; for soft, it's already fading
-          dabAlpha = flow * coverage * (hardness >= 0.99 ? 1 : 0);
-        } else if (hardness >= 0.99) {
-          // Hard brush: full alpha inside
-          dabAlpha = flow;
+        if (hardness >= 0.99) {
+          // Hard brush: full alpha inside, AA at edge
+          if (normDist > 1 + aaWidth / radiusX) {
+            continue; // Outside AA zone
+          } else if (normDist > 1) {
+            // Anti-aliasing zone
+            const edgeNormDist = normDist - 1;
+            const coverage = Math.max(0, 1 - edgeNormDist / (aaWidth / radiusX));
+            dabAlpha = flow * coverage;
+          } else {
+            dabAlpha = flow;
+          }
         } else {
-          // Soft brush: use TRUE Gaussian falloff for PS-like airbrush effect
-          // At hardness=0, the entire brush is a smooth Gaussian falloff
-          // At hardness=1, the brush is solid (handled above)
-
+          // Soft brush: Gaussian falloff from center, extends beyond nominal edge
           // Map hardness to control inner core vs. falloff zone
           const innerRadius = hardness; // 0-1, where falloff begins
+
+          // For soft brushes, extend processing area beyond nominal radius
+          // Gaussian at t=2 gives exp(-2.5*4) ≈ 0.00005, effectively invisible
+          const maxExtent = 1.5; // Process up to 1.5x nominal radius for soft brushes
+          if (normDist > maxExtent) {
+            continue;
+          }
 
           if (normDist <= innerRadius) {
             // Inside hard core
             dabAlpha = flow;
           } else {
-            // Gaussian falloff zone
-            // t goes from 0 (at inner edge) to 1 (at outer edge)
+            // Gaussian falloff zone - continues smoothly beyond edge
+            // t goes from 0 (at inner edge) and can exceed 1 for smooth falloff
             const t = (normDist - innerRadius) / (1 - innerRadius);
 
             // Use TRUE Gaussian falloff: exp(-k * t²)
             // k = 2.5 gives a very soft airbrush effect similar to Photoshop
-            // Higher k = sharper falloff, lower k = more spread/blur
             const gaussianK = 2.5;
             dabAlpha = flow * Math.exp(-gaussianK * t * t);
           }
@@ -542,9 +547,34 @@ export class BrushStamper {
   }
 
   /**
-   * Finish stroke
+   * Finish stroke and return final fadeout dabs
+   * This creates a tapered end similar to PS/Krita when pen is lifted quickly
    */
-  finishStroke(): void {
+  finishStroke(): Array<{ x: number; y: number; pressure: number }> {
+    const dabs: Array<{ x: number; y: number; pressure: number }> = [];
+
+    // If we have a valid last point with pressure, emit fadeout dabs
+    if (this.lastPoint && this.hasMovedEnough && this.lastPoint.pressure > 0.05) {
+      // Emit 2-3 additional dabs with decreasing pressure for smooth taper
+      const fadeSteps = 3;
+      const lastP = this.lastPoint.pressure;
+
+      for (let i = 1; i <= fadeSteps; i++) {
+        const t = i / (fadeSteps + 1);
+        // Use exponential decay for natural fadeout
+        const fadePressure = lastP * Math.exp(-3 * t);
+
+        if (fadePressure > 0.01) {
+          dabs.push({
+            x: this.lastPoint.x,
+            y: this.lastPoint.y,
+            pressure: fadePressure,
+          });
+        }
+      }
+    }
+
     this.beginStroke();
+    return dabs;
   }
 }
