@@ -127,8 +127,8 @@ function App() {
       <Toolbar />
       <main className="workspace">
         <Canvas />
-        <PanelLayer />
       </main>
+      <PanelLayer />
       <TabletPanel />
     </div>
   );

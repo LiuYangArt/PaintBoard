@@ -28,3 +28,7 @@
   background: var(--primary-color, #0066cc);
   color: #fff;
 }
+
+.tool-grid-btn:focus {
+  outline: none;
+}
