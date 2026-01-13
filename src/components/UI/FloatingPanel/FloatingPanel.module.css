@@ -69,63 +69,70 @@
 /* Resize Handles */
 .resizeHandle {
   position: absolute;
-  z-index: 10;
+  z-index: 9999; /* Ensure high z-index */
+  /* Debugging: uncomment to see handles
+  background: rgba(255, 0, 0, 0.2);
+  */
 }
 
 .resize-n {
-  top: -3px;
+  top: -4px;
   left: 6px;
   right: 6px;
-  height: 6px;
+  height: 8px;
   cursor: n-resize;
 }
 .resize-s {
-  bottom: -3px;
+  bottom: -4px;
   left: 6px;
   right: 6px;
-  height: 6px;
+  height: 8px;
   cursor: s-resize;
 }
 .resize-e {
-  right: -3px;
+  right: -4px;
   top: 6px;
   bottom: 6px;
-  width: 6px;
+  width: 8px;
   cursor: e-resize;
 }
 .resize-w {
-  left: -3px;
+  left: -4px;
   top: 6px;
   bottom: 6px;
-  width: 6px;
+  width: 8px;
   cursor: w-resize;
 }
 
 .resize-ne {
-  top: -3px;
-  right: -3px;
-  width: 10px;
-  height: 10px;
+  top: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
   cursor: ne-resize;
+  z-index: 10000;
 }
 .resize-nw {
-  top: -3px;
-  left: -3px;
-  width: 10px;
-  height: 10px;
+  top: -4px;
+  left: -4px;
+  width: 12px;
+  height: 12px;
   cursor: nw-resize;
+  z-index: 10000;
 }
 .resize-se {
-  bottom: -3px;
-  right: -3px;
-  width: 10px;
-  height: 10px;
+  bottom: -4px;
+  right: -4px;
+  width: 12px;
+  height: 12px;
   cursor: se-resize;
+  z-index: 10000;
 }
 .resize-sw {
-  bottom: -3px;
-  left: -3px;
-  width: 10px;
-  height: 10px;
+  bottom: -4px;
+  left: -4px;
+  width: 12px;
+  height: 12px;
   cursor: sw-resize;
+  z-index: 10000;
 }

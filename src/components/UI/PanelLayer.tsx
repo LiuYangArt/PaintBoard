@@ -6,10 +6,12 @@ import React from 'react';
 // In a real app, this might be dynamic or injected
 import { ColorPanel } from '../ColorPanel';
 import { LayerPanel } from '../LayerPanel';
+import { ToolsPanel } from '../ToolsPanel';
 
 const PANEL_REGISTRY: Record<string, React.FC> = {
   'color-panel': ColorPanel,
   'layer-panel': LayerPanel,
+  'tools-panel': ToolsPanel,
   // Add more generic panels here
   'debug-panel': () => <div style={{ padding: 10, color: '#ccc' }}>Debug Info Content</div>,
 };

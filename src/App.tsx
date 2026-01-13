@@ -75,6 +75,7 @@ function App() {
   // Register default panels
   const registerPanel = usePanelStore((s) => s.registerPanel);
   const openPanel = usePanelStore((s) => s.openPanel);
+  const closePanel = usePanelStore((s) => s.closePanel);
 
   useEffect(() => {
     // 1. Tools Panel (Top Left)
@@ -108,7 +109,10 @@ function App() {
     openPanel('tools-panel');
     openPanel('color-panel');
     openPanel('layer-panel');
-  }, [registerPanel, openPanel]);
+
+    // Ensure debug panel is closed (if persisted)
+    closePanel('debug-panel');
+  }, [registerPanel, openPanel, closePanel]);
 
   if (!isReady) {
     return (
