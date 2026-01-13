@@ -198,15 +198,9 @@ export class StrokeAccumulator {
           // Hard brush: full alpha inside
           dabAlpha = flow;
         } else {
-          // Soft brush: use Gaussian-like falloff
-          // The hardness parameter controls where the "core" ends
+          // Soft brush: use TRUE Gaussian falloff for PS-like airbrush effect
           // At hardness=0, the entire brush is a smooth Gaussian falloff
           // At hardness=1, the brush is solid (handled above)
-
-          // Gaussian parameters:
-          // - sigma controls the spread (smaller = tighter center, more blur at edge)
-          // - For PS-like behavior, we use: alpha = exp(-k * dist²)
-          //   where k = 4.5 gives a nice soft airbrush effect
 
           // Map hardness to control inner core vs. falloff zone
           const innerRadius = hardness; // 0-1, where falloff begins
@@ -215,15 +209,15 @@ export class StrokeAccumulator {
             // Inside hard core
             dabAlpha = flow;
           } else {
-            // Soft falloff zone using squared cosine (similar to Gaussian, cheaper to compute)
+            // Gaussian falloff zone
             // t goes from 0 (at inner edge) to 1 (at outer edge)
             const t = (normDist - innerRadius) / (1 - innerRadius);
 
-            // Use smooth Hermite interpolation (cubic) for PS-like softness
-            // smoothstep: 3t² - 2t³ gives a nice S-curve
-            // For airbrush, we want more gradual falloff, use: (1 - t²)² or cos-based
-            const smoothT = t * t * (3 - 2 * t); // smoothstep
-            dabAlpha = flow * (1 - smoothT);
+            // Use TRUE Gaussian falloff: exp(-k * t²)
+            // k = 2.5 gives a very soft airbrush effect similar to Photoshop
+            // Higher k = sharper falloff, lower k = more spread/blur
+            const gaussianK = 2.5;
+            dabAlpha = flow * Math.exp(-gaussianK * t * t);
           }
         }
 
@@ -454,6 +448,7 @@ export class BrushStamper {
   /**
    * Process a new input point and return dab positions
    * Applies pressure smoothing via EMA to prevent stepping artifacts
+   * IMPORTANT: EMA is only applied AFTER the pen has moved enough to prevent "big head" issue
    */
   processPoint(
     x: number,
@@ -464,20 +459,19 @@ export class BrushStamper {
   ): Array<{ x: number; y: number; pressure: number }> {
     const dabs: Array<{ x: number; y: number; pressure: number }> = [];
 
-    // Apply pressure smoothing
-    const smoothedPressure = this.smoothPressure(pressure);
-
     // First point: just record position, don't emit dab yet
+    // DON'T apply EMA here - we haven't moved yet
     if (this.isStrokeStart) {
       this.isStrokeStart = false;
       this.strokeStartPoint = { x, y };
-      this.lastPoint = { x, y, pressure: smoothedPressure };
+      this.lastPoint = { x, y, pressure: 0 }; // Start with 0 pressure
+      this.smoothedPressure = 0; // Reset EMA
       // Don't emit first dab - wait for movement
       return dabs;
     }
 
     if (!this.lastPoint || !this.strokeStartPoint) {
-      this.lastPoint = { x, y, pressure: smoothedPressure };
+      this.lastPoint = { x, y, pressure: 0 };
       this.strokeStartPoint = { x, y };
       return dabs;
     }
@@ -489,21 +483,25 @@ export class BrushStamper {
       const distFromStart = Math.sqrt(dxFromStart * dxFromStart + dyFromStart * dyFromStart);
 
       if (distFromStart < BrushStamper.MIN_MOVEMENT_DISTANCE) {
-        // Haven't moved enough yet - DON'T update lastPoint.pressure
+        // Haven't moved enough yet - DON'T update pressure at all
         // This prevents pressure buildup at stationary position
         // Just update position for distance tracking
         this.lastPoint.x = x;
         this.lastPoint.y = y;
-        // Keep pressure at 0 or very low until movement starts
+        // DON'T call smoothPressure() - that would accumulate pressure
         return dabs;
       }
 
-      // We've moved enough - now emit the first dab with smoothed pressure
+      // We've moved enough - NOW initialize EMA with current pressure
       this.hasMovedEnough = true;
-      this.lastPoint = { x, y, pressure: smoothedPressure };
-      dabs.push({ x, y, pressure: smoothedPressure });
+      this.smoothedPressure = pressure; // Initialize EMA with current pressure
+      this.lastPoint = { x, y, pressure };
+      dabs.push({ x, y, pressure });
       return dabs;
     }
+
+    // Apply pressure smoothing only AFTER we've started moving
+    const smoothedPressure = this.smoothPressure(pressure);
 
     // Calculate distance from last point
     const dx = x - this.lastPoint.x;
@@ -519,9 +517,8 @@ export class BrushStamper {
       effectiveSpacing = spacing * 0.5;
     }
 
-    // Spacing threshold - use minimum size to ensure enough dabs at low pressure
-    const effectiveSize = Math.max(size * Math.max(smoothedPressure, 0.1), size * 0.1);
-    const threshold = Math.max(effectiveSize * effectiveSpacing, 1);
+    // Spacing threshold based on current size (not pressure-scaled to avoid inconsistent spacing)
+    const threshold = Math.max(size * effectiveSpacing, 1);
 
     this.accumulatedDistance += distance;
 
@@ -532,16 +529,11 @@ export class BrushStamper {
       const dabY = this.lastPoint.y + dy * t;
 
       // Use smoothstep interpolation for pressure (smoother than linear)
-      const linearP = this.lastPoint.pressure + (smoothedPressure - this.lastPoint.pressure) * t;
-      // Apply subtle smoothstep to the transition
       const smoothT = t * t * (3 - 2 * t);
       const dabPressure =
         this.lastPoint.pressure + (smoothedPressure - this.lastPoint.pressure) * smoothT;
 
-      // Use the smoother of the two for better transitions
-      const finalPressure = (linearP + dabPressure) * 0.5;
-
-      dabs.push({ x: dabX, y: dabY, pressure: finalPressure });
+      dabs.push({ x: dabX, y: dabY, pressure: dabPressure });
       this.accumulatedDistance -= threshold;
     }
 
