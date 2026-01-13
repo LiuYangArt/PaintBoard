@@ -96,13 +96,7 @@ export function Canvas() {
     brushCursorRef,
   });
 
-  const {
-    pushStroke,
-    pushAddLayer,
-    pushRemoveLayer: _pushRemoveLayer,
-    undo,
-    redo,
-  } = useHistoryStore();
+  const { pushStroke, pushAddLayer, pushRemoveLayer, undo, redo } = useHistoryStore();
 
   // Store beforeImage when stroke starts
   const beforeImageRef = useRef<{ layerId: string; imageData: ImageData } | null>(null);
@@ -198,10 +192,17 @@ export function Canvas() {
 
     switch (entry.type) {
       case 'stroke': {
+        // Check if layer still exists, skip if not
+        const layerExists = layers.some((l) => l.id === entry.layerId);
+        if (!layerExists) {
+          // Layer was deleted, skip this undo and try next
+          handleUndo();
+          return;
+        }
+
         // Save current state (afterImage) for redo before restoring
         const currentImageData = renderer.getLayerImageData(entry.layerId);
         if (currentImageData) {
-          // Mutate the entry in redoStack to store afterImage
           entry.afterImage = currentImageData;
         }
         renderer.setLayerImageData(entry.layerId, entry.beforeImage);
@@ -239,7 +240,7 @@ export function Canvas() {
         break;
       }
     }
-  }, [undo, compositeAndRender, updateThumbnail]);
+  }, [undo, layers, compositeAndRender, updateThumbnail]);
 
   // Handle redo for all operation types
   const handleRedo = useCallback(() => {
@@ -347,26 +348,55 @@ export function Canvas() {
     [compositeAndRender, updateThumbnail]
   );
 
-  // Expose undo/redo/clearLayer/duplicateLayer handlers globally for toolbar
+  // Remove layer with history support
+  const handleRemoveLayer = useCallback(
+    (layerId: string) => {
+      const renderer = layerRendererRef.current;
+      if (!renderer) return;
+
+      // Get layer info before removing
+      const layerState = layers.find((l) => l.id === layerId);
+      const layerIndex = layers.findIndex((l) => l.id === layerId);
+      const imageData = renderer.getLayerImageData(layerId);
+
+      if (!layerState || layerIndex === -1 || !imageData) return;
+
+      // Save to history
+      pushRemoveLayer(layerId, layerState, layerIndex, imageData);
+
+      // Remove from renderer and document
+      renderer.removeLayer(layerId);
+      const { removeLayer } = useDocumentStore.getState();
+      removeLayer(layerId);
+
+      compositeAndRender();
+    },
+    [layers, pushRemoveLayer, compositeAndRender]
+  );
+
+  // Expose undo/redo/clearLayer/duplicateLayer/removeLayer handlers globally for toolbar
   useEffect(() => {
     const win = window as Window & {
       __canvasUndo?: () => void;
       __canvasRedo?: () => void;
       __canvasClearLayer?: () => void;
       __canvasDuplicateLayer?: (from: string, to: string) => void;
+      __canvasRemoveLayer?: (id: string) => void;
     };
     win.__canvasUndo = handleUndo;
     win.__canvasRedo = handleRedo;
     win.__canvasClearLayer = handleClearLayer;
     win.__canvasDuplicateLayer = handleDuplicateLayer;
+    win.__canvasRemoveLayer = handleRemoveLayer;
 
     return () => {
       delete win.__canvasUndo;
       delete win.__canvasRedo;
       delete win.__canvasClearLayer;
       delete win.__canvasDuplicateLayer;
+      delete win.__canvasRemoveLayer;
     };
-  }, [handleUndo, handleRedo, handleClearLayer, handleDuplicateLayer]);
+  }, [handleUndo, handleRedo, handleClearLayer, handleDuplicateLayer, handleRemoveLayer]);
 
   // Initialize document and layer renderer
   useEffect(() => {

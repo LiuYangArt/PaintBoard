@@ -109,7 +109,16 @@ export function LayerPanel(): JSX.Element {
 
   const handleDeleteLayer = useCallback(() => {
     if (contextMenu.layerId) {
-      removeLayer(contextMenu.layerId);
+      // Use canvas interface to save history before remove
+      const win = window as Window & {
+        __canvasRemoveLayer?: (id: string) => void;
+      };
+      if (win.__canvasRemoveLayer) {
+        win.__canvasRemoveLayer(contextMenu.layerId);
+      } else {
+        // Fallback if canvas not ready
+        removeLayer(contextMenu.layerId);
+      }
     }
     setContextMenu((prev) => ({ ...prev, visible: false }));
   }, [contextMenu.layerId, removeLayer]);
@@ -216,7 +225,17 @@ export function LayerPanel(): JSX.Element {
               onActivate={setActiveLayer}
               onToggleVisibility={toggleLayerVisibility}
               onToggleLock={toggleLayerLock}
-              onRemove={removeLayer}
+              onRemove={(id) => {
+                // Use canvas interface to save history before remove
+                const win = window as Window & {
+                  __canvasRemoveLayer?: (id: string) => void;
+                };
+                if (win.__canvasRemoveLayer) {
+                  win.__canvasRemoveLayer(id);
+                } else {
+                  removeLayer(id);
+                }
+              }}
               onContextMenu={handleContextMenu}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
