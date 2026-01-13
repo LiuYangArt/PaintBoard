@@ -574,12 +574,18 @@ export function Canvas() {
       const previewCanvas = getPreviewCanvas();
       if (previewCanvas) {
         ctx.save();
-        ctx.globalAlpha = Math.max(0, Math.min(1, brushOpacity));
+        // Hybrid Strategy Preview Sync:
+        // - Hard Brushes (>= 95): Opacity uses Clamp mode (burned into buffer). Render with alpha 1.0.
+        // - Soft Brushes (< 95): Opacity uses Post-Multiply mode. Render with alpha = brushOpacity.
+        const isHardBrush = brushHardness >= 95;
+        const previewOpacity = isHardBrush ? 1.0 : Math.max(0, Math.min(1, brushOpacity));
+
+        ctx.globalAlpha = previewOpacity;
         ctx.drawImage(previewCanvas, 0, 0);
         ctx.restore();
       }
     }
-  }, [width, height, isStrokeActive, getPreviewCanvas, brushOpacity]);
+  }, [width, height, isStrokeActive, getPreviewCanvas, brushOpacity, brushHardness]);
 
   // Process a single point through the brush renderer (for brush tool)
   const processBrushPointWithConfig = useCallback(
