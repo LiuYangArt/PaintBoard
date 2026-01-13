@@ -82,13 +82,13 @@ function App() {
     registerPanel({
       id: 'tools-panel',
       title: 'Tools',
-      defaultGeometry: { x: 20, y: 100, width: 80, height: 260 },
+      defaultGeometry: { x: 20, y: 100, width: 100, height: 180 },
       defaultAlignment: { horizontal: 'left', vertical: 'top', offsetX: 20, offsetY: 100 },
       resizable: false,
       closable: false,
       minimizable: false,
-      minWidth: 80,
-      minHeight: 200,
+      minWidth: 100,
+      minHeight: 180,
     });
 
     // 2. Color Panel (Top Right, mimicking existing right panel top)

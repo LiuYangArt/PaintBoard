@@ -65,6 +65,20 @@ interface PanelStoreState {
   bringToFront: (id: string) => void;
 }
 
+// Helper to extract code-driven capabilities from config
+function extractCapabilities(config: PanelConfig) {
+  return {
+    alignment: config.defaultAlignment,
+    resizable: config.resizable ?? true,
+    closable: config.closable ?? true,
+    minimizable: config.minimizable ?? true,
+    minWidth: config.minWidth,
+    minHeight: config.minHeight,
+    maxWidth: config.maxWidth,
+    maxHeight: config.maxHeight,
+  };
+}
+
 export const usePanelStore = create<PanelStoreState>()(
   persist(
     immer((set) => ({
@@ -76,6 +90,10 @@ export const usePanelStore = create<PanelStoreState>()(
       registerPanel: (config) =>
         set((state) => {
           state.configs[config.id] = config;
+
+          // Helper to extract capabilities
+          const capabilities = extractCapabilities(config);
+
           // If state doesn't exist, initialize it
           if (!state.panels[config.id]) {
             state.panels[config.id] = {
@@ -84,16 +102,21 @@ export const usePanelStore = create<PanelStoreState>()(
               isOpen: true,
               isCollapsed: false,
               zIndex: state.maxZIndex + 1,
-              alignment: config.defaultAlignment,
-              resizable: config.resizable ?? true, // Default to true
-              closable: config.closable ?? true,
-              minimizable: config.minimizable ?? true,
-              minWidth: config.minWidth,
-              minHeight: config.minHeight,
-              maxWidth: config.maxWidth,
-              maxHeight: config.maxHeight,
+              ...capabilities,
             };
             state.maxZIndex += 1;
+          } else {
+            // Panel exists, but we MUST update capabilities that are code-defined rules
+            const existingPanel = state.panels[config.id];
+            if (existingPanel) {
+              Object.assign(existingPanel, capabilities);
+
+              // Force reset dimensions if not resizable (fix for stale persisted state)
+              if (capabilities.resizable === false) {
+                existingPanel.width = config.defaultGeometry.width;
+                existingPanel.height = config.defaultGeometry.height;
+              }
+            }
           }
         }),
 

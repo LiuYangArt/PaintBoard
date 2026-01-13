@@ -1,6 +1,7 @@
 import { usePanelStore } from '../../stores/panel';
 import { FloatingPanel } from './FloatingPanel';
 import React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 
 // Registry of available panel contents
 // In a real app, this might be dynamic or injected
@@ -17,29 +18,29 @@ const PANEL_REGISTRY: Record<string, React.FC> = {
 };
 
 export function PanelLayer() {
-  const panels = usePanelStore((s) => s.panels);
+  // Only subscribe to the list of panel IDs and their open status to determine what to render
+  // The panels themselves are responsible for their own geometry/state via their own hooks
+  const panelIds = usePanelStore(
+    useShallow((s) => Object.keys(s.panels).filter((id) => s.panels[id]?.isOpen))
+  );
+
   const configs = usePanelStore((s) => s.configs);
 
   return (
     <>
-      {Object.values(panels).map((panel) => {
-        if (!panel.isOpen) return null;
-
-        const config = configs[panel.id];
-        const Component = PANEL_REGISTRY[panel.id];
-
-        // If no component registered, maybe generic content or skip
-        // For M7.1 we want to verify the System.
+      {panelIds.map((id) => {
+        const config = configs[id];
+        const Component = PANEL_REGISTRY[id];
 
         return (
           <FloatingPanel
-            key={panel.id}
-            panelId={panel.id}
+            key={id}
+            panelId={id}
             title={config?.title}
             minWidth={config?.minWidth}
             minHeight={config?.minHeight}
           >
-            {Component ? <Component /> : <div>Panel Content Missing for {panel.id}</div>}
+            {Component ? <Component /> : <div>Panel Content Missing for {id}</div>}
           </FloatingPanel>
         );
       })}
