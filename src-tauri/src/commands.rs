@@ -137,84 +137,6 @@ struct TabletState {
     is_drawing: Arc<std::sync::atomic::AtomicBool>,
     /// Pressure curve for mapping (applied after smoothing)
     pressure_curve: Arc<std::sync::atomic::AtomicU8>,
-    /// Stroke logger for debugging (shared with emitter thread)
-    stroke_log: Arc<Mutex<StrokeLog>>,
-}
-
-/// Stroke log entry for debugging pressure issues
-#[derive(Debug, Clone)]
-struct StrokeLogEntry {
-    sample: usize,
-    x: f32,
-    y: f32,
-    raw_pressure: f32,
-    smoothed: f32,
-    curved: f32,
-    timestamp_ms: u64,
-}
-
-/// Collects stroke data for debugging
-#[derive(Debug, Default)]
-struct StrokeLog {
-    entries: Vec<StrokeLogEntry>,
-    stroke_count: usize,
-    enabled: bool,
-}
-
-impl StrokeLog {
-    fn new() -> Self {
-        Self {
-            entries: Vec::with_capacity(256),
-            stroke_count: 0,
-            enabled: true, // Enable by default for debugging
-        }
-    }
-
-    fn add_entry(&mut self, entry: StrokeLogEntry) {
-        if self.enabled {
-            self.entries.push(entry);
-        }
-    }
-
-    fn end_stroke(&mut self) {
-        if !self.enabled || self.entries.is_empty() {
-            return;
-        }
-
-        self.stroke_count += 1;
-
-        // Write to file
-        let log_path =
-            std::env::temp_dir().join(format!("paintboard_stroke_{}.csv", self.stroke_count));
-
-        if let Ok(mut file) = std::fs::File::create(&log_path) {
-            use std::io::Write;
-            // Header
-            let _ = writeln!(file, "sample,x,y,raw_pressure,smoothed,curved,timestamp_ms");
-            // Data
-            for entry in &self.entries {
-                let _ = writeln!(
-                    file,
-                    "{},{:.2},{:.2},{:.4},{:.4},{:.4},{}",
-                    entry.sample,
-                    entry.x,
-                    entry.y,
-                    entry.raw_pressure,
-                    entry.smoothed,
-                    entry.curved,
-                    entry.timestamp_ms
-                );
-            }
-            tracing::info!(
-                "[StrokeLog] Wrote stroke #{} to {:?} ({} points)",
-                self.stroke_count,
-                log_path,
-                self.entries.len()
-            );
-        }
-
-        self.entries.clear();
-    }
 }
 
 impl TabletState {
@@ -229,7 +151,6 @@ impl TabletState {
             pressure_smoother: Arc::new(Mutex::new(PressureSmoother::new(3))),
             is_drawing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             pressure_curve: Arc::new(std::sync::atomic::AtomicU8::new(0)), // 0=Linear
-            stroke_log: Arc::new(Mutex::new(StrokeLog::new())),
         }
     }
 
@@ -407,7 +328,6 @@ pub fn start_tablet() -> Result<(), String> {
             // Clone Arc handles for the emitter thread
             let pressure_smoother = state.pressure_smoother.clone();
             let is_drawing = state.is_drawing.clone();
-            let stroke_log = state.stroke_log.clone();
 
             std::thread::spawn(move || {
                 tracing::info!("[Tablet] Event emitter thread started");
@@ -455,45 +375,12 @@ pub fn start_tablet() -> Result<(), String> {
                                         }
                                     }
 
-                                    // End stroke log when pen lifts (was drawing, now not)
-                                    if was_drawing && !now_drawing {
-                                        if let Ok(mut log) = stroke_log.lock() {
-                                            log.end_stroke();
-                                        }
-                                    }
-
                                     // Apply pressure smoothing when drawing
                                     // Note: Pressure curve is applied in frontend, not here
                                     if now_drawing {
                                         if let Ok(mut smoother) = pressure_smoother.lock() {
-                                            // Log raw pressure for debugging
-                                            let raw_pressure = point.pressure;
-                                            // Smooth raw pressure (curve is applied in frontend)
                                             let smoothed = smoother.smooth(point.pressure);
                                             point.pressure = smoothed;
-
-                                            // Add to stroke log
-                                            if let Ok(mut log) = stroke_log.lock() {
-                                                log.add_entry(StrokeLogEntry {
-                                                    sample: smoother.sample_count(),
-                                                    x: point.x,
-                                                    y: point.y,
-                                                    raw_pressure,
-                                                    smoothed,
-                                                    curved: smoothed, // No curve applied here
-                                                    timestamp_ms: point.timestamp_ms,
-                                                });
-                                            }
-
-                                            // Debug log for first few samples of each stroke
-                                            if smoother.sample_count() <= 5 {
-                                                tracing::info!(
-                                                    "[Pressure] sample={} raw={:.3} smoothed={:.3}",
-                                                    smoother.sample_count(),
-                                                    raw_pressure,
-                                                    smoothed,
-                                                );
-                                            }
                                         }
                                     }
 
@@ -502,10 +389,7 @@ pub fn start_tablet() -> Result<(), String> {
                                     TabletEvent::Input(point)
                                 }
                                 TabletEvent::ProximityLeave => {
-                                    // End stroke log and reset smoother when pen leaves
-                                    if let Ok(mut log) = stroke_log.lock() {
-                                        log.end_stroke();
-                                    }
+                                    // Reset smoother when pen leaves
                                     is_drawing.store(false, std::sync::atomic::Ordering::Relaxed);
                                     if let Ok(mut smoother) = pressure_smoother.lock() {
                                         smoother.reset();
