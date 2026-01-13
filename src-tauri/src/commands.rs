@@ -3,7 +3,8 @@
 use crate::brush::{BrushEngine, StrokeSegment};
 use crate::input::wintab_spike::SpikeResult;
 use crate::input::{
-    PressureCurve, RawInputPoint, TabletBackend, TabletConfig, TabletInfo, TabletStatus,
+    PressureCurve, PressureSmoother, RawInputPoint, TabletBackend, TabletConfig, TabletEvent,
+    TabletInfo, TabletStatus,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -130,6 +131,10 @@ struct TabletState {
     config: TabletConfig,
     app_handle: Option<AppHandle>,
     emitter_running: bool,
+    /// Pressure smoother for first-stroke issue (shared with emitter thread)
+    pressure_smoother: Arc<Mutex<PressureSmoother>>,
+    /// Track if pen is currently drawing (pressure > 0)
+    is_drawing: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl TabletState {
@@ -141,6 +146,8 @@ impl TabletState {
             config: TabletConfig::default(),
             app_handle: None,
             emitter_running: false,
+            pressure_smoother: Arc::new(Mutex::new(PressureSmoother::new(3))),
+            is_drawing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -304,6 +311,9 @@ pub fn start_tablet() -> Result<(), String> {
         if let Some(app) = state.app_handle.clone() {
             state.emitter_running = true;
             let state_clone = get_tablet_state();
+            // Clone Arc handles for the emitter thread
+            let pressure_smoother = state.pressure_smoother.clone();
+            let is_drawing = state.is_drawing.clone();
 
             std::thread::spawn(move || {
                 tracing::info!("[Tablet] Event emitter thread started");
@@ -334,10 +344,48 @@ pub fn start_tablet() -> Result<(), String> {
                         break;
                     }
 
-                    // Step 2: Emit events OUTSIDE the lock to avoid blocking other threads
+                    // Step 2: Process and emit events OUTSIDE the lock
                     if !events.is_empty() {
-                        events_to_emit.append(&mut events);
-                        // tracing::debug!("[Tablet] Emitting {} events", events_to_emit.len());
+                        // Process events with pressure smoothing
+                        for event in events.drain(..) {
+                            let processed_event = match event {
+                                TabletEvent::Input(mut point) => {
+                                    let was_drawing =
+                                        is_drawing.load(std::sync::atomic::Ordering::Relaxed);
+                                    let now_drawing = point.pressure > 0.0;
+
+                                    // Reset smoother when stroke starts (pressure goes from 0 to >0)
+                                    if now_drawing && !was_drawing {
+                                        if let Ok(mut smoother) = pressure_smoother.lock() {
+                                            smoother.reset();
+                                        }
+                                    }
+
+                                    // Apply pressure smoothing when drawing
+                                    if now_drawing {
+                                        if let Ok(mut smoother) = pressure_smoother.lock() {
+                                            point.pressure = smoother.smooth(point.pressure);
+                                        }
+                                    }
+
+                                    is_drawing
+                                        .store(now_drawing, std::sync::atomic::Ordering::Relaxed);
+                                    TabletEvent::Input(point)
+                                }
+                                TabletEvent::ProximityLeave => {
+                                    // Reset smoother and drawing state when pen leaves
+                                    is_drawing.store(false, std::sync::atomic::Ordering::Relaxed);
+                                    if let Ok(mut smoother) = pressure_smoother.lock() {
+                                        smoother.reset();
+                                    }
+                                    TabletEvent::ProximityLeave
+                                }
+                                other => other,
+                            };
+                            events_to_emit.push(processed_event);
+                        }
+
+                        // Emit processed events
                         for event in events_to_emit.drain(..) {
                             if let Err(e) = app.emit("tablet-event", &event) {
                                 tracing::error!("[Tablet] Failed to emit event: {}", e);
