@@ -19,6 +19,8 @@ export interface DabParams {
   hardness: number; // Edge hardness (0-1)
   color: string; // Hex color
   opacityCeiling?: number; // Optional opacity ceiling (0-1), if set, limits max alpha
+  roundness?: number; // Brush roundness (0-1, 1 = circle, <1 = ellipse)
+  angle?: number; // Brush angle in degrees (0-360)
 }
 
 export interface Rect {
@@ -120,23 +122,33 @@ export class StrokeAccumulator {
   }
 
   /**
-   * Stamp a circular dab onto the buffer with opacity ceiling and anti-aliasing
+   * Stamp an elliptical dab onto the buffer with opacity ceiling and anti-aliasing
+   * Supports roundness (ellipse) and angle (rotation)
    */
   stampDab(params: DabParams): void {
-    const { x, y, size, flow, hardness, color, opacityCeiling } = params;
-    const radius = size / 2;
+    const { x, y, size, flow, hardness, color, opacityCeiling, roundness = 1, angle = 0 } = params;
+    const radiusX = size / 2;
+    const radiusY = radiusX * roundness; // Scale Y radius for roundness
 
-    if (radius < 0.5) return;
+    if (radiusX < 0.5) return;
 
-    this.expandDirtyRect(x, y, radius);
+    // Use the larger radius for dirty rect expansion
+    const maxRadius = Math.max(radiusX, radiusY);
+    this.expandDirtyRect(x, y, maxRadius);
 
     const rgb = hexToRgb(color);
 
+    // Pre-calculate rotation values (angle in degrees to radians)
+    const angleRad = (angle * Math.PI) / 180;
+    const cosA = Math.cos(-angleRad); // Negative for inverse rotation
+    const sinA = Math.sin(-angleRad);
+
     // Calculate bounding box for pixel operations (add 1px margin for AA)
-    const left = Math.max(0, Math.floor(x - radius - 1));
-    const top = Math.max(0, Math.floor(y - radius - 1));
-    const right = Math.min(this.width, Math.ceil(x + radius + 1));
-    const bottom = Math.min(this.height, Math.ceil(y + radius + 1));
+    // Use maxRadius for bounding box to account for rotation
+    const left = Math.max(0, Math.floor(x - maxRadius - 1));
+    const top = Math.max(0, Math.floor(y - maxRadius - 1));
+    const right = Math.min(this.width, Math.ceil(x + maxRadius + 1));
+    const bottom = Math.min(this.height, Math.ceil(y + maxRadius + 1));
     const rectWidth = right - left;
     const rectHeight = bottom - top;
 
@@ -146,7 +158,7 @@ export class StrokeAccumulator {
     const bufferData = this.ctx.getImageData(left, top, rectWidth, rectHeight);
 
     // Anti-aliasing: smooth transition over ~1px at the edge
-    const aaWidth = Math.min(1.0, radius * 0.5); // AA width, max 1px, smaller for tiny brushes
+    const aaWidth = Math.min(1.0, radiusX * 0.5); // AA width, max 1px, smaller for tiny brushes
     const maxAlphaFloat = opacityCeiling !== undefined ? opacityCeiling : 1.0;
 
     // Process each pixel in the dab region
@@ -155,30 +167,39 @@ export class StrokeAccumulator {
         const worldX = left + px;
         const worldY = top + py;
 
-        // Calculate distance from dab center (sample at pixel center)
+        // Calculate offset from dab center (sample at pixel center)
         const dx = worldX + 0.5 - x;
         const dy = worldY + 0.5 - y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Apply inverse rotation to get position in brush-local coordinates
+        const localX = dx * cosA - dy * sinA;
+        const localY = dx * sinA + dy * cosA;
+
+        // Calculate normalized distance for ellipse
+        // dist = 1.0 at the edge of the ellipse
+        const normX = localX / radiusX;
+        const normY = localY / radiusY;
+        const normDist = Math.sqrt(normX * normX + normY * normY);
 
         // Skip pixels clearly outside the brush (with AA margin)
-        if (dist > radius + aaWidth) continue;
+        if (normDist > 1 + aaWidth / radiusX) continue;
 
         // Calculate dab alpha based on hardness
         let dabAlpha: number;
-        const innerRadius = radius * hardness;
+        const innerNormDist = hardness; // Hardness defines where soft falloff starts (0-1)
 
-        if (dist <= innerRadius) {
+        if (normDist <= innerNormDist) {
           // Inside hard core: full flow
           dabAlpha = flow;
-        } else if (dist <= radius) {
+        } else if (normDist <= 1) {
           // Softness falloff zone
-          const t = (dist - innerRadius) / (radius - innerRadius);
+          const t = (normDist - innerNormDist) / (1 - innerNormDist);
           dabAlpha = flow * (1 - t);
         } else {
-          // Anti-aliasing zone (radius to radius + aaWidth)
+          // Anti-aliasing zone (beyond edge)
           // Smooth edge coverage falloff
-          const edgeDist = dist - radius;
-          const coverage = Math.max(0, 1 - edgeDist / aaWidth);
+          const edgeNormDist = normDist - 1;
+          const coverage = Math.max(0, 1 - edgeNormDist / (aaWidth / radiusX));
           // For hard brushes, apply AA to full flow; for soft, it's already fading
           dabAlpha = flow * coverage * (hardness >= 0.99 ? 1 : 0);
         }
