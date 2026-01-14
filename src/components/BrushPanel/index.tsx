@@ -22,7 +22,7 @@ function PressureToggle({
   enabled: boolean;
   onToggle: () => void;
   title: string;
-}) {
+}): JSX.Element {
   return (
     <button
       className={`pressure-toggle ${enabled ? 'active' : ''}`}
@@ -57,7 +57,7 @@ function SliderRow({
   pressureEnabled?: boolean;
   onPressureToggle?: () => void;
   pressureTitle?: string;
-}) {
+}): JSX.Element {
   return (
     <div className="brush-setting-row">
       <span className="brush-setting-label">{label}</span>
@@ -81,7 +81,7 @@ function SliderRow({
   );
 }
 
-export function BrushPanel() {
+export function BrushPanel(): JSX.Element {
   const {
     brushSize,
     setBrushSize,

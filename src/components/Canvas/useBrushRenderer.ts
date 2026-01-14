@@ -113,12 +113,8 @@ export function useBrushRenderer({
   }, [width, height, gpuAvailable]);
 
   // Determine actual backend based on renderMode and GPU availability
-  const backend: RenderBackend = (() => {
-    if (!gpuAvailable || !gpuBufferRef.current) {
-      return 'canvas2d';
-    }
-    return renderMode === 'gpu' ? 'gpu' : 'canvas2d';
-  })();
+  const backend: RenderBackend =
+    gpuAvailable && gpuBufferRef.current && renderMode === 'gpu' ? 'gpu' : 'canvas2d';
 
   // Ensure CPU buffer exists (for fallback or canvas2d mode)
   const ensureCPUBuffer = useCallback(() => {
