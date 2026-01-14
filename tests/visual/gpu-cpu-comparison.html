@@ -78,15 +78,6 @@
         color: #888;
         margin-top: 5px;
       }
-      .mode-toggle {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-      }
-      .mode-toggle label {
-        flex-direction: row;
-        gap: 5px;
-      }
     </style>
   </head>
   <body>
@@ -149,142 +140,162 @@
       import { StrokeAccumulator } from '../../src/utils/strokeBuffer.ts';
       import { GPUContext, GPUStrokeAccumulator } from '../../src/gpu/index.ts';
 
-      const CANVAS_W = 500,
-        CANVAS_H = 300;
+      const CANVAS_W = 500;
+      const CANVAS_H = 300;
 
-      const testModeSelect = document.getElementById('testMode');
-      const sizeInput = document.getElementById('size');
-      const hardnessInput = document.getElementById('hardness');
-      const flowInput = document.getElementById('flow');
-      const opacityInput = document.getElementById('opacity');
-      const spacingInput = document.getElementById('spacing');
-      const sizeValue = document.getElementById('sizeValue');
-      const hardnessValue = document.getElementById('hardnessValue');
-      const flowValue = document.getElementById('flowValue');
-      const opacityValue = document.getElementById('opacityValue');
-      const spacingValue = document.getElementById('spacingValue');
-      const modeDescription = document.getElementById('modeDescription');
-      const runBtn = document.getElementById('runTest');
-      const resultsDiv = document.getElementById('results');
+      // UI Elements
+      const els = {
+        testMode: document.getElementById('testMode'),
+        size: document.getElementById('size'),
+        hardness: document.getElementById('hardness'),
+        flow: document.getElementById('flow'),
+        opacity: document.getElementById('opacity'),
+        spacing: document.getElementById('spacing'),
+        sizeValue: document.getElementById('sizeValue'),
+        hardnessValue: document.getElementById('hardnessValue'),
+        flowValue: document.getElementById('flowValue'),
+        opacityValue: document.getElementById('opacityValue'),
+        spacingValue: document.getElementById('spacingValue'),
+        modeDescription: document.getElementById('modeDescription'),
+        runBtn: document.getElementById('runTest'),
+        results: document.getElementById('results'),
+      };
 
-      // Update labels
-      sizeInput.addEventListener('input', (e) => (sizeValue.textContent = e.target.value));
-      hardnessInput.addEventListener('input', (e) => (hardnessValue.textContent = e.target.value));
-      flowInput.addEventListener('input', (e) => (flowValue.textContent = e.target.value));
-      opacityInput.addEventListener('input', (e) => (opacityValue.textContent = e.target.value));
-      spacingInput.addEventListener('input', (e) => (spacingValue.textContent = e.target.value));
-      testModeSelect.addEventListener('change', updateModeDescription);
+      // Event Listeners
+      const linkInputToLabel = (input, label) => {
+        input.addEventListener('input', (e) => (label.textContent = e.target.value));
+      };
+
+      linkInputToLabel(els.size, els.sizeValue);
+      linkInputToLabel(els.hardness, els.hardnessValue);
+      linkInputToLabel(els.flow, els.flowValue);
+      linkInputToLabel(els.opacity, els.opacityValue);
+      linkInputToLabel(els.spacing, els.spacingValue);
+
+      els.testMode.addEventListener('change', updateModeDescription);
+      els.runBtn.addEventListener('click', runTest);
 
       function updateModeDescription() {
-        const mode = testModeSelect.value;
-        if (mode === 'point') {
-          modeDescription.textContent = '测试 5 个重叠 dab 的累积效果（用于验证 Alpha Darken）';
-        } else {
-          modeDescription.textContent = '测试水平笔触绘制效果（模拟真实绘画）';
-        }
+        const mode = els.testMode.value;
+        els.modeDescription.textContent =
+          mode === 'point'
+            ? '测试 5 个重叠 dab 的累积效果（用于验证 Alpha Darken）'
+            : '测试水平笔触绘制效果（模拟真实绘画）';
       }
+
+      // Initialize
       updateModeDescription();
 
-      runBtn.addEventListener('click', runTest);
-
       async function runTest() {
-        const mode = testModeSelect.value;
-        const size = parseFloat(sizeInput.value);
-        const hardness = parseFloat(hardnessInput.value);
-        const flow = parseFloat(flowInput.value);
-        const opacity = parseFloat(opacityInput.value);
-        const spacingPercent = parseFloat(spacingInput.value) / 100;
-        const color = '#000000';
+        const CONFIG = {
+          mode: els.testMode.value,
+          size: parseFloat(els.size.value),
+          hardness: parseFloat(els.hardness.value),
+          flow: parseFloat(els.flow.value),
+          opacity: parseFloat(els.opacity.value),
+          spacing: parseFloat(els.spacing.value) / 100,
+          color: '#000000',
+        };
 
-        resultsDiv.innerHTML = '<span style="color:#888">Running...</span>';
+        els.results.innerHTML = '<span style="color:#888">Running...</span>';
 
         try {
-          // Generate dab positions based on mode
-          const dabPositions = generateDabPositions(mode, size, spacingPercent);
+          const dabPositions = generateDabPositions(CONFIG.mode, CONFIG.size, CONFIG.spacing);
 
-          // ============= CPU Reference =============
-          const cpuLayerCanvas = document.createElement('canvas');
-          cpuLayerCanvas.width = CANVAS_W;
-          cpuLayerCanvas.height = CANVAS_H;
-          const cpuLayerCtx = cpuLayerCanvas.getContext('2d', { willReadFrequently: true });
+          // 1. CPU Reference
+          const cpuResult = await renderCPU(CONFIG, dabPositions);
 
-          const cpuAccumulator = new StrokeAccumulator(CANVAS_W, CANVAS_H);
-          cpuAccumulator.beginStroke(hardness);
-
-          for (const pos of dabPositions) {
-            cpuAccumulator.stampDab({
-              x: pos.x,
-              y: pos.y,
-              size,
-              flow,
-              hardness,
-              color,
-              dabOpacity: 1.0,
-            });
-          }
-          cpuAccumulator.endStroke(cpuLayerCtx, opacity);
-
-          // ============= GPU Target =============
-          const gpuCtxInstance = GPUContext.getInstance();
-          await gpuCtxInstance.initialize();
-          if (!gpuCtxInstance.device) {
-            resultsDiv.innerHTML = '<span style="color:red">WebGPU not supported</span>';
+          // 2. GPU Target
+          const gpuResult = await renderGPU(CONFIG, dabPositions);
+          if (!gpuResult) {
+            els.results.innerHTML = '<span style="color:red">WebGPU not supported</span>';
             return;
           }
 
-          const gpuLayerCanvas = document.createElement('canvas');
-          gpuLayerCanvas.width = CANVAS_W;
-          gpuLayerCanvas.height = CANVAS_H;
-          const gpuLayerCtx = gpuLayerCanvas.getContext('2d', { willReadFrequently: true });
+          // 3. Display Results
+          displayResult('cpuCanvas', cpuResult);
+          displayResult('gpuCanvas', gpuResult);
 
-          const gpuAccumulator = new GPUStrokeAccumulator(
-            gpuCtxInstance.device,
-            CANVAS_W,
-            CANVAS_H
-          );
-          gpuAccumulator.clear();
-          gpuAccumulator.beginStroke();
-
-          for (const pos of dabPositions) {
-            gpuAccumulator.stampDab({
-              x: pos.x,
-              y: pos.y,
-              size,
-              flow,
-              hardness,
-              color,
-              dabOpacity: 1.0,
-            });
-          }
-          await gpuAccumulator.endStroke(gpuLayerCtx, opacity);
-
-          // ============= Display =============
-          const cpuDisplayCtx = document.getElementById('cpuCanvas').getContext('2d');
-          const gpuDisplayCtx = document.getElementById('gpuCanvas').getContext('2d');
-          const diffCtx = document.getElementById('diffCanvas').getContext('2d');
-
-          cpuDisplayCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-          gpuDisplayCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-          diffCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
-          cpuDisplayCtx.drawImage(cpuLayerCanvas, 0, 0);
-          gpuDisplayCtx.drawImage(gpuLayerCanvas, 0, 0);
-
-          // ============= Compare =============
-          const diffResult = compareCanvases(cpuDisplayCtx, gpuDisplayCtx, diffCtx);
-
-          resultsDiv.innerHTML = `
-            <h3>Result (${dabPositions.length} dabs)</h3>
-            <div>Max Diff: <strong>${diffResult.maxDiff}</strong></div>
-            <div>Diff Pixels: ${diffResult.diffPixels} (${diffResult.diffPercent}%)</div>
-            <div style="color: ${diffResult.passed ? '#4CAF50' : '#F44336'}; font-weight: bold;">
-              ${diffResult.passed ? '✓ PASSED (Diff ≤ 2)' : '✗ FAILED'}
-            </div>
-          `;
+          // 4. Compare
+          performComparison(cpuResult, gpuResult, dabPositions.length);
         } catch (e) {
           console.error(e);
-          resultsDiv.innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
+          els.results.innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
         }
+      }
+
+      function renderCPU(config, positions) {
+        const canvas = document.createElement('canvas');
+        canvas.width = CANVAS_W;
+        canvas.height = CANVAS_H;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        const accumulator = new StrokeAccumulator(CANVAS_W, CANVAS_H);
+        accumulator.beginStroke(config.hardness);
+
+        stampDabs(accumulator, positions, config);
+        accumulator.endStroke(ctx, config.opacity);
+
+        return canvas;
+      }
+
+      async function renderGPU(config, positions) {
+        const ctxInstance = GPUContext.getInstance();
+        await ctxInstance.initialize();
+        if (!ctxInstance.device) return null;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = CANVAS_W;
+        canvas.height = CANVAS_H;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        const accumulator = new GPUStrokeAccumulator(ctxInstance.device, CANVAS_W, CANVAS_H);
+        accumulator.clear();
+        accumulator.beginStroke();
+
+        stampDabs(accumulator, positions, config);
+        await accumulator.endStroke(ctx, config.opacity);
+
+        return canvas;
+      }
+
+      function stampDabs(accumulator, positions, config) {
+        for (const pos of positions) {
+          accumulator.stampDab({
+            x: pos.x,
+            y: pos.y,
+            size: config.size,
+            flow: config.flow,
+            hardness: config.hardness,
+            color: config.color,
+            dabOpacity: 1.0,
+          });
+        }
+      }
+
+      function displayResult(canvasId, sourceCanvas) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+        ctx.drawImage(sourceCanvas, 0, 0);
+      }
+
+      function performComparison(cpuCanvas, gpuCanvas, dabCount) {
+        const diffCtx = document.getElementById('diffCanvas').getContext('2d');
+        diffCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+        const cpuCtx = cpuCanvas.getContext('2d');
+        const gpuCtx = gpuCanvas.getContext('2d');
+
+        const result = compareCanvases(cpuCtx, gpuCtx, diffCtx);
+
+        els.results.innerHTML = `
+          <h3>Result (${dabCount} dabs)</h3>
+          <div>Max Diff: <strong>${result.maxDiff}</strong></div>
+          <div>Diff Pixels: ${result.diffPixels} (${result.diffPercent}%)</div>
+          <div style="color: ${result.passed ? '#4CAF50' : '#F44336'}; font-weight: bold;">
+            ${result.passed ? '✓ PASSED (Diff ≤ 2)' : '✗ FAILED'}
+          </div>
+        `;
       }
 
       function generateDabPositions(mode, size, spacingPercent) {
@@ -292,20 +303,13 @@
         const y = CANVAS_H / 2;
 
         if (mode === 'point') {
-          // 5 overlapping dabs at center
           const x = CANVAS_W / 2;
-          for (let i = 0; i < 5; i++) {
-            positions.push({ x, y });
-          }
+          for (let i = 0; i < 5; i++) positions.push({ x, y });
         } else {
-          // Stroke line from left to right
           const step = size * spacingPercent;
           const startX = size / 2 + 20;
           const endX = CANVAS_W - size / 2 - 20;
-
-          for (let x = startX; x <= endX; x += step) {
-            positions.push({ x, y });
-          }
+          for (let x = startX; x <= endX; x += step) positions.push({ x, y });
         }
         return positions;
       }
@@ -339,11 +343,10 @@
 
           if (localMax > threshold) {
             diffPixels++;
-            diffImageData.data[i] = 255;
-            diffImageData.data[i + 1] = 0;
-            diffImageData.data[i + 2] = 0;
-            diffImageData.data[i + 3] = 255;
+            diffImageData.data[i] = 255; // R
+            diffImageData.data[i + 3] = 255; // A
           } else {
+            // Background for matching pixels
             diffImageData.data[i] = r1;
             diffImageData.data[i + 1] = g1;
             diffImageData.data[i + 2] = b1;
