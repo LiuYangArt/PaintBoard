@@ -1,7 +1,7 @@
 # GPU 笔刷渲染修复计划
 
 > **日期**: 2026-01-14
-> **状态**: 待实施
+> **状态**: 进行中
 > **目标**: 修复 GPU 渲染的视觉一致性问题，消除闪烁
 
 ---
@@ -42,28 +42,28 @@
 > [!IMPORTANT]
 > 先有测试，后有修复。GPU/CPU 切换功能既是开发工具，也是用户功能。
 
-#### 0.1 GPU/CPU 渲染切换功能
+#### 0.1 GPU/CPU 渲染切换功能 (✅ 已完成)
 
 **目的**: 方便开发时直接对比 GPU/CPU 渲染效果，同时作为用户功能提供回退选项。
 
 **实现方案**:
 
-1. **Store 扩展** (`src/stores/tool.ts`):
+1. **Store 扩展** (`src/stores/tool.ts`): ✅
 
    ```typescript
    // 新增状态
-   renderMode: 'auto' | 'gpu' | 'cpu';  // auto = 自动选择（大笔刷用GPU）
+   renderMode: 'gpu' | 'cpu';  // 显式选择
    setRenderMode: (mode) => void;
    ```
 
-2. **UI 组件** (`src/components/BrushPanel/`):
+2. **UI 组件** (`src/components/BrushPanel/`): ✅
    - 在笔刷设置面板底部添加切换开关
-   - 三个选项: Auto（默认）/ GPU / CPU
-   - 当前模式指示器
+   - 两个选项: GPU / CPU (移除 Auto 模式以提供更明确控制)
+   - 增加了面板高度以容纳新选项
 
-3. **渲染层集成** (`src/components/Canvas/`):
+3. **渲染层集成** (`src/components/Canvas/`): ✅
    - 根据 `renderMode` 选择 `StrokeAccumulator` 或 `GPUStrokeAccumulator`
-   - `auto` 模式: `brushSize > 200 ? GPU : CPU`
+   - 移除 `auto` 模式逻辑，改为直接映射
 
 #### 0.2 视觉对比测试
 
@@ -238,7 +238,7 @@ expect(gpuResult).toBeCloseTo(cpuResult, 5); // 5 位精度
 ## 执行优先级
 
 1. **立即**:
-   - Phase 0.1: GPU/CPU 切换功能（方便后续调试）
+   - Phase 0.1: GPU/CPU 切换功能（✅ 已完成）
    - Phase 1.1: 颜色空间对齐
 2. **短期**:
    - Phase 1.2-1.5: Shader 修复
