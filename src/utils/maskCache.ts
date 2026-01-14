@@ -366,21 +366,25 @@ export class MaskCache {
         // Normalized distance (ellipse equation: (x/rx)² + (y/ry)² = 1)
         const normDistSq = localX * localX * invRx2 + localY * localY * invRy2;
 
-        // Skip if outside ellipse + AA zone
-        if (normDistSq > 1.1) continue;
-
-        // Calculate mask value with 1px AA edge
-        let maskValue: number;
+        // Skip if clearly outside ellipse (with 2px margin for AA)
+        // Use physical distance for AA, not normalized distance
         const normDist = Math.sqrt(normDistSq);
-        if (normDist <= 0.95) {
+
+        // Physical distance from center along the ellipse normal
+        const physicalDist = normDist * radiusX; // Approximate for circular brush
+        const edgeDist = radiusX; // Edge is at radius
+
+        // Calculate mask value: hard inside, 1px AA at edge
+        let maskValue: number;
+        if (physicalDist <= edgeDist - 0.5) {
+          // Fully inside
           maskValue = 1.0;
-        } else if (normDist >= 1.0) {
-          // Outside, but within AA zone - fade out
-          const distFromEdge = (normDist - 1.0) * radiusX;
-          maskValue = distFromEdge >= 1.0 ? 0 : 1.0 - distFromEdge;
+        } else if (physicalDist >= edgeDist + 0.5) {
+          // Fully outside
+          maskValue = 0;
         } else {
-          // Near edge - smooth transition
-          maskValue = 1.0 - (normDist - 0.95) * 20; // 0.95 to 1.0 -> 1.0 to 0.0
+          // Within 1px AA band: linear falloff
+          maskValue = 0.5 - (physicalDist - edgeDist);
         }
 
         if (maskValue < 0.001) continue;
