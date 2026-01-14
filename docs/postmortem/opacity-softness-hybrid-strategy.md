@@ -7,44 +7,128 @@
 ### 问题
 不同 hardness 下透明度压感不一致。调整 hardness 时，同样的压力产生不同的视觉透明度。
 
-### 根因分析
-在 Hybrid Strategy 的软笔刷模式中，压感被双重应用：
+### 第一性原理分析
 
-```typescript
-// 旧代码 (useBrushRenderer.ts)
-const dabFlow = config.flow * dabPressure;  // 压感第一次应用
-const opacityScale = config.pressureOpacityEnabled ? dabPressure : 1.0;
-finalFlow = dabFlow * opacityScale;  // 压感第二次应用！
-// 结果: finalFlow = flow * pressure² (二次曲线)
+**核心原则**：Opacity 必须在 **DAB 级别** 应用，而不是在 endStroke 级别。
+这确保每个 dab 的透明度由 **当时的压力** 决定，前面的 dab 不受后面压力影响。
+
+**Krita 的做法**（`kis_painter_blt_multi_fixed.cpp:60`）：
+```cpp
+localParamInfo.setOpacityAndAverage(dab.opacity, dab.averageOpacity);
 ```
+每个 dab 有自己的 opacity 值，在合成时应用。
 
-而硬笔刷模式是线性的 (`ceiling = opacity * pressure`)，导致两种模式的压感响应曲线不一致。
+### 错误尝试：maxEffectiveOpacity
 
-### Krita 研究发现
-通过分析 Krita 源码 (`libs/image/kis_gauss_circle_mask_generator.cpp`)：
+最初尝试追踪 `maxEffectiveOpacity`，在 endStroke 时作为整个 buffer 的乘数。
+**结果**：前面画的部分会随后面压力增大而变深！因为 globalAlpha 影响整个 buffer。
 
-1. **Mask 归一化正确**：`alphafactor = 255.0 / (2.0 * erf(center))` 确保中心点始终为 255
-2. **Opacity/Flow 解耦**：在合成阶段独立应用，不在 mask 计算时乘入
-3. **关键文件**：`kis_painter_blt_multi_fixed.cpp:60-61`
+### 正确方案：Ceiling vs Post-Multiply 策略
 
-### 修复方案
-修改 `useBrushRenderer.ts`，避免压感双重应用：
+**核心思路**：根据 `pressureOpacityEnabled` 决定渲染模式，而不是根据 hardness。
+
+| 条件 | 渲染模式 | Dab 阶段 | EndStroke |
+|------|----------|----------|-----------|
+| 硬笔刷 OR opacity压感 | Ceiling | `ceiling = opacity * pressure` | 1.0 |
+| 软笔刷 且 无opacity压感 | Post-Multiply | 无 ceiling | `opacity` |
+
+**关键洞察**：
+- 当 `pressureOpacityEnabled = true` 时，**必须** 在 dab 级别应用 opacity
+- Post-Multiply 模式只用于软笔刷且没有 opacity 压感的情况
 
 ```typescript
-// 新代码
-if (config.pressureOpacityEnabled && !config.pressureFlowEnabled) {
-  // 只有 opacity 压感启用时，才应用到 flow
-  finalFlow = dabFlow * dabPressure;
+// useBrushRenderer.ts
+
+// Ceiling Mode vs Post-Multiply Mode
+const useCeilingMode = isHardBrush || config.pressureOpacityEnabled;
+
+if (useCeilingMode) {
+  // Opacity at dab level
+  ceiling = config.pressureOpacityEnabled
+    ? config.opacity * dabPressure  // Per-dab transparency
+    : config.opacity;               // Fixed transparency
+  renderModeRef.current = 'ceiling';
 } else {
-  // flow 压感已应用，或无压感
-  finalFlow = dabFlow;
+  // Opacity at endStroke (soft brush without opacity pressure)
+  ceiling = undefined;
+  renderModeRef.current = 'postMultiply';
+  baseOpacityRef.current = config.opacity;
 }
+
+// endStroke
+const finalOpacity = renderModeRef.current === 'ceiling' ? 1.0 : opacity;
+
+// Preview
+const previewOpacity = renderModeRef.current === 'ceiling' ? 1.0 : baseOpacityRef.current;
 ```
 
 ### 验证
 - 类型检查 ✓
 - Lint ✓
 - 测试 ✓
+
+### 结果
+- 每个 dab 的透明度由当时的压力决定
+- 前面画的部分不受后面压力影响
+- 预览与 endStroke 完全一致
+
+### 问题2：软笔刷渐变被截断（Flat-top 问题）
+
+使用 Ceiling 模式后，软笔刷出现"环状伪影"——中心到边缘的渐变不平滑。
+
+**根因分析**：`opacityCeiling` 是一个 **clamp**（钳制），会截断超过阈值的 alpha 值。
+对于软笔刷，mask 本身就有从 1.0 到 0.0 的渐变。当 ceiling 设为 0.5 时，
+中心区域 (alpha > 0.5) 全部被截断为 0.5，形成"平顶"效果。
+
+**Krita 的做法**：opacity 是一个 **multiplier**（乘数），不是 ceiling。
+```cpp
+// KisDabRenderingExecutor.cpp
+const quint8 dabOpacity = job->opacity;  // 整个 dab 的不透明度乘数
+```
+每个像素的最终 alpha = maskAlpha × dabOpacity，这样渐变被等比缩放，不会被截断。
+
+### 最终方案：dabOpacity 乘数模式
+
+**新增参数** `dabOpacity`：作为整个 dab 的乘数，保留渐变。
+
+| 场景 | 使用参数 | 效果 |
+|------|----------|------|
+| 硬笔刷 | `opacityCeiling` | 钳制最大 alpha，保持实心边缘 |
+| 软笔刷 + opacity 压感 | `dabOpacity` | 乘数模式，保留渐变 |
+| 软笔刷 无压感 | Post-Multiply | endStroke 时应用 opacity |
+
+```typescript
+// useBrushRenderer.ts - 三分支策略
+
+if (isHardBrush) {
+  // 硬笔刷：ceiling 模式
+  ceiling = config.opacity * dabPressure;
+  dabOpacity = 1.0;
+} else if (config.pressureOpacityEnabled) {
+  // 软笔刷 + opacity 压感：dabOpacity 乘数模式
+  ceiling = undefined;
+  dabOpacity = config.opacity * dabPressure;
+} else {
+  // 软笔刷无压感：Post-Multiply
+  ceiling = undefined;
+  dabOpacity = 1.0;
+  // opacity 在 endStroke 时应用
+}
+
+// strokeBuffer.ts - stampDab
+const maskAlpha = this.calculateMaskAlpha(...);
+const dabAlpha = maskAlpha * dabOpacity;  // 乘数保留渐变
+```
+
+### 验证
+- 类型检查 ✓
+- Lint ✓
+- 测试 ✓
+
+### 结果
+- 软笔刷渐变平滑，与 Krita/Photoshop 一致
+- 硬笔刷边缘保持实心
+- 每个 dab 的透明度独立，不受后续压力影响
 
 ---
 

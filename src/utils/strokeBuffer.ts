@@ -22,6 +22,7 @@ export interface DabParams {
   maskType?: MaskType; // Mask type: 'gaussian' (erf-based, default) or 'default' (simple)
   color: string; // Hex color
   opacityCeiling?: number; // Optional opacity ceiling (0-1). If set, limits max accumulation.
+  dabOpacity?: number; // Krita-style: multiplier for entire dab (preserves gradient, unlike ceiling)
   roundness?: number; // Brush roundness (0-1, 1 = circle, <1 = ellipse)
   angle?: number; // Brush angle in degrees (0-360)
 }
@@ -149,6 +150,10 @@ export class StrokeAccumulator {
   /**
    * Stamp an elliptical dab onto the buffer with opacity ceiling and anti-aliasing
    * Supports roundness (ellipse) and angle (rotation)
+   *
+   * Two opacity modes (can be combined):
+   * 1. opacityCeiling: Clamps max alpha (good for hard brushes, causes flat-top on soft brushes)
+   * 2. dabOpacity: Multiplies entire dab alpha (preserves gradient, Krita-style)
    */
   stampDab(params: DabParams): void {
     const {
@@ -160,6 +165,7 @@ export class StrokeAccumulator {
       maskType = 'gaussian', // Default to Krita-style erf Gaussian
       color,
       opacityCeiling, // Hybrid Strategy: Used for Hard brushes to prevent edge thinning
+      dabOpacity = 1.0, // Krita-style multiplier for entire dab
       roundness = 1,
       angle = 0,
     } = params;
@@ -233,9 +239,17 @@ export class StrokeAccumulator {
         const normDist = Math.sqrt(normX * normX + normY * normY);
 
         // Calculate dab alpha based on hardness and mask type
-        const dabAlpha = this.calculateMaskAlpha(normDist, radiusX, flow, hardness, maskType, fade);
+        const maskAlpha = this.calculateMaskAlpha(
+          normDist,
+          radiusX,
+          flow,
+          hardness,
+          maskType,
+          fade
+        );
 
-        if (dabAlpha <= 0.001) continue;
+        // Apply dabOpacity as multiplier (Krita-style: preserves gradient)
+        const dabAlpha = maskAlpha * dabOpacity;
 
         if (dabAlpha <= 0.001) continue;
 

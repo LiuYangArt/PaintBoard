@@ -37,7 +37,13 @@ export interface UseBrushRendererProps {
 export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
   const strokeBufferRef = useRef<StrokeAccumulator | null>(null);
   const stamperRef = useRef<BrushStamper>(new BrushStamper());
-  const strokeModeRef = useRef<'hard' | 'soft'>('soft');
+
+  // Track stroke rendering mode for endStroke and preview
+  // - 'ceiling': opacity applied at dab level (hard brush OR opacity pressure enabled)
+  // - 'postMultiply': opacity applied at endStroke (soft brush without opacity pressure)
+  const renderModeRef = useRef<'ceiling' | 'postMultiply'>('ceiling');
+  // Store the base opacity for Post-Multiply mode
+  const baseOpacityRef = useRef<number>(1.0);
 
   // Initialize or resize stroke buffer
   const ensureStrokeBuffer = useCallback(() => {
@@ -59,11 +65,16 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
     const buffer = ensureStrokeBuffer();
     buffer.beginStroke();
     stamperRef.current.beginStroke();
+    renderModeRef.current = 'ceiling'; // Default, will be set in processPoint
+    baseOpacityRef.current = 1.0;
   }, [ensureStrokeBuffer]);
 
   /**
    * Process a point during stroke and render dabs to stroke buffer
-   * Note: Pressure fade-in is handled in Rust backend (PressureSmoother)
+   *
+   * Key principle: Opacity must be applied at DAB level when pressure-sensitive.
+   * This ensures each dab's transparency is determined by the pressure at that moment,
+   * and earlier dabs are not affected by later pressure changes.
    */
   const processPoint = useCallback(
     (x: number, y: number, pressure: number, config: BrushRenderConfig): void => {
@@ -82,40 +93,43 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
       const dabs = stamper.processPoint(x, y, pressure, size, config.spacing);
 
       // Stamp each dab to the stroke buffer
-      // Stamp each dab to the stroke buffer
       for (const dab of dabs) {
         const dabPressure = applyPressureCurve(dab.pressure, config.pressureCurve);
         const dabSize = config.pressureSizeEnabled ? config.size * dabPressure : config.size;
         const dabFlow = config.pressureFlowEnabled ? config.flow * dabPressure : config.flow;
 
-        // Hybrid Strategy:
-        // - Hard Brushes (>= Threshold): Use Opacity Ceiling (Clamp) to maintain solid edges.
-        // - Soft Brushes (< Threshold): Use Post-Multiply to allow smooth gradients.
         const isHardBrush = config.hardness >= HARD_BRUSH_THRESHOLD;
-        strokeModeRef.current = isHardBrush ? 'hard' : 'soft';
 
-        let finalFlow = dabFlow;
+        // Determine rendering strategy (Krita-style):
+        // 1. Hard brush: use opacityCeiling (clamp max alpha, preserves solid edges)
+        // 2. Soft brush + opacity pressure: use dabOpacity (multiplier, preserves gradient)
+        // 3. Soft brush without opacity pressure: Post-Multiply mode
+        //
+        // Key insight from Krita: opacity should be a MULTIPLIER for soft brushes,
+        // not a CEILING. Ceiling clips the gradient causing "flat-top" artifacts.
+
+        const finalFlow = dabFlow;
         let ceiling: number | undefined = undefined;
+        let dabOpacity: number = 1.0;
 
         if (isHardBrush) {
-          // Hard Mode: Clamp (Old behavior)
-          // Opacity pressure affects the ceiling, limits max accumulation
+          // Hard brush: use ceiling mode (clamps alpha, preserves solid edges)
           ceiling = config.pressureOpacityEnabled ? config.opacity * dabPressure : config.opacity;
-          finalFlow = dabFlow;
-        } else {
-          // Soft Mode: Post-Multiply (New behavior)
-          // Opacity is applied at endStroke, not here.
-          // To match hard brush pressure response, apply opacity pressure to flow
-          // but avoid double-applying pressure (dabFlow already has flow pressure).
-          // Only apply opacity pressure if it's enabled and flow pressure is NOT enabled.
-          if (config.pressureOpacityEnabled && !config.pressureFlowEnabled) {
-            // Opacity pressure only: modulate flow by pressure
-            finalFlow = dabFlow * dabPressure;
-          } else {
-            // Flow pressure already applied in dabFlow, or no pressure enabled
-            finalFlow = dabFlow;
-          }
+          dabOpacity = 1.0;
+          renderModeRef.current = 'ceiling';
+        } else if (config.pressureOpacityEnabled) {
+          // Soft brush + opacity pressure: use dabOpacity as multiplier
+          // This preserves the gradient while applying per-dab opacity
           ceiling = undefined;
+          dabOpacity = config.opacity * dabPressure;
+          renderModeRef.current = 'ceiling'; // Opacity is baked into buffer
+        } else {
+          // Soft brush without opacity pressure: Post-Multiply mode
+          // Opacity applied at endStroke to preserve full gradient range
+          ceiling = undefined;
+          dabOpacity = 1.0;
+          renderModeRef.current = 'postMultiply';
+          baseOpacityRef.current = config.opacity;
         }
 
         const dabParams: DabParams = {
@@ -127,6 +141,7 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
           maskType: config.maskType,
           color: config.color,
           opacityCeiling: ceiling,
+          dabOpacity, // Krita-style: multiplier for entire dab (preserves gradient)
           roundness: config.roundness / 100, // Convert from 0-100 to 0-1
           angle: config.angle,
         };
@@ -138,7 +153,7 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
   );
 
   /**
-   * End stroke and composite to layer with opacity ceiling
+   * End stroke and composite to layer
    */
   const endStroke = useCallback((layerCtx: CanvasRenderingContext2D, opacity: number) => {
     const buffer = strokeBufferRef.current;
@@ -147,10 +162,10 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
     // Reset stamper state (no artificial fadeout - rely on natural pressure)
     stamperRef.current.finishStroke(0);
 
-    // Hybrid Strategy: Determine endStroke opacity
-    // If Hard mode, opacity was applied at proper ceiling. End stroke should be composite at full strength.
-    // If Soft mode, opacity is applied here as a multiplier as ceiling was 1.0.
-    const finalOpacity = strokeModeRef.current === 'hard' ? 1.0 : opacity;
+    // Determine final opacity based on render mode:
+    // - Ceiling mode: opacity already baked into buffer, use 1.0
+    // - Post-Multiply mode: apply opacity as multiplier
+    const finalOpacity = renderModeRef.current === 'ceiling' ? 1.0 : opacity;
 
     buffer.endStroke(layerCtx, finalOpacity);
   }, []);
@@ -160,6 +175,16 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
    */
   const getPreviewCanvas = useCallback(() => {
     return strokeBufferRef.current?.getCanvas() ?? null;
+  }, []);
+
+  /**
+   * Get the current preview opacity.
+   * This ensures preview matches the final endStroke result exactly.
+   * - Ceiling mode: returns 1.0 (opacity already in buffer)
+   * - Post-Multiply mode: returns base opacity
+   */
+  const getPreviewOpacity = useCallback(() => {
+    return renderModeRef.current === 'ceiling' ? 1.0 : baseOpacityRef.current;
   }, []);
 
   /**
@@ -174,6 +199,7 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
     processPoint,
     endStroke,
     getPreviewCanvas,
+    getPreviewOpacity,
     isStrokeActive,
   };
 }
