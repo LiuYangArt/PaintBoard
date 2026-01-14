@@ -43,6 +43,10 @@ export class GPUStrokeAccumulator {
   private readbackBuffer: GPUBuffer | null = null;
   private readbackBytesPerRow: number = 0;
 
+  // Preview readback buffer (separate to avoid conflicts)
+  private previewReadbackBuffer: GPUBuffer | null = null;
+  private previewUpdatePending: boolean = false;
+
   // Performance timing
   private cpuTimer: CPUTimer = new CPUTimer();
 
@@ -76,13 +80,20 @@ export class GPUStrokeAccumulator {
   }
 
   private createReadbackBuffer(): void {
-    // rgba16float = 8 bytes per pixel
+    // rgba32float = 16 bytes per pixel (4 channels * 4 bytes/channel)
     // Rows must be aligned to 256 bytes
-    this.readbackBytesPerRow = Math.ceil((this.width * 8) / 256) * 256;
+    this.readbackBytesPerRow = Math.ceil((this.width * 16) / 256) * 256;
     const size = this.readbackBytesPerRow * this.height;
 
     this.readbackBuffer = this.device.createBuffer({
       label: 'Stroke Readback Buffer',
+      size,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+
+    // Separate buffer for preview to avoid mapping conflicts
+    this.previewReadbackBuffer = this.device.createBuffer({
+      label: 'Preview Readback Buffer',
       size,
       usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
     });
@@ -106,6 +117,7 @@ export class GPUStrokeAccumulator {
     this.previewCanvas.height = height;
 
     this.readbackBuffer?.destroy();
+    this.previewReadbackBuffer?.destroy();
     this.createReadbackBuffer();
 
     this.clear();
@@ -157,6 +169,20 @@ export class GPUStrokeAccumulator {
     const rgb = this.hexToRgb(params.color);
     const radius = params.size / 2;
 
+    // DEBUG: Log first few dabs to check parameter values
+    if (this.dabsSinceLastFlush < 3) {
+      console.log('[GPU stampDab] params:', {
+        x: params.x.toFixed(1),
+        y: params.y.toFixed(1),
+        size: params.size.toFixed(1),
+        flow: params.flow.toFixed(3),
+        hardness: params.hardness.toFixed(3),
+        dabOpacity: (params.dabOpacity ?? 1.0).toFixed(3),
+        color: params.color,
+        rgb: { r: rgb.r, g: rgb.g, b: rgb.b },
+      });
+    }
+
     const dabData: DabInstanceData = {
       x: params.x,
       y: params.y,
@@ -165,7 +191,8 @@ export class GPUStrokeAccumulator {
       r: rgb.r / 255,
       g: rgb.g / 255,
       b: rgb.b / 255,
-      a: (params.dabOpacity ?? 1.0) * params.flow,
+      dabOpacity: params.dabOpacity ?? 1.0,
+      flow: params.flow,
     };
 
     this.instanceBuffer.push(dabData);
@@ -258,6 +285,75 @@ export class GPUStrokeAccumulator {
       dabCount: count,
       cpuTimeMs: cpuTime,
     });
+
+    // 7. Trigger async preview update
+    void this.updatePreview();
+  }
+
+  /**
+   * Async update preview canvas from GPU texture
+   */
+  private async updatePreview(): Promise<void> {
+    if (this.previewUpdatePending || !this.previewReadbackBuffer || !this.active) {
+      return;
+    }
+
+    this.previewUpdatePending = true;
+
+    try {
+      // Copy current texture to preview readback buffer
+      const encoder = this.device.createCommandEncoder();
+      encoder.copyTextureToBuffer(
+        { texture: this.pingPongBuffer.source },
+        { buffer: this.previewReadbackBuffer, bytesPerRow: this.readbackBytesPerRow },
+        [this.width, this.height]
+      );
+      this.device.queue.submit([encoder.finish()]);
+
+      // Wait for GPU and map buffer
+      await this.previewReadbackBuffer.mapAsync(GPUMapMode.READ);
+      const gpuData = new Float32Array(this.previewReadbackBuffer.getMappedRange());
+
+      // Get dirty rect bounds
+      const rect = {
+        left: Math.max(0, this.dirtyRect.left),
+        top: Math.max(0, this.dirtyRect.top),
+        right: Math.min(this.width, this.dirtyRect.right),
+        bottom: Math.min(this.height, this.dirtyRect.bottom),
+      };
+
+      const rectWidth = rect.right - rect.left;
+      const rectHeight = rect.bottom - rect.top;
+
+      if (rectWidth > 0 && rectHeight > 0) {
+        // Create ImageData for the dirty region
+        const imageData = this.previewCtx.createImageData(rectWidth, rectHeight);
+        const floatsPerRow = this.readbackBytesPerRow / 4;
+
+        for (let py = 0; py < rectHeight; py++) {
+          for (let px = 0; px < rectWidth; px++) {
+            const bufferX = rect.left + px;
+            const bufferY = rect.top + py;
+            const srcIdx = bufferY * floatsPerRow + bufferX * 4;
+            const dstIdx = (py * rectWidth + px) * 4;
+
+            // Convert float (0-1) to uint8 (0-255)
+            imageData.data[dstIdx] = Math.round((gpuData[srcIdx] ?? 0) * 255);
+            imageData.data[dstIdx + 1] = Math.round((gpuData[srcIdx + 1] ?? 0) * 255);
+            imageData.data[dstIdx + 2] = Math.round((gpuData[srcIdx + 2] ?? 0) * 255);
+            imageData.data[dstIdx + 3] = Math.round((gpuData[srcIdx + 3] ?? 0) * 255);
+          }
+        }
+
+        this.previewCtx.putImageData(imageData, rect.left, rect.top);
+      }
+
+      this.previewReadbackBuffer.unmap();
+    } catch {
+      // Ignore errors during preview update
+    } finally {
+      this.previewUpdatePending = false;
+    }
   }
 
   /**
@@ -323,9 +419,48 @@ export class GPUStrokeAccumulator {
     await this.readbackBuffer.mapAsync(GPUMapMode.READ);
     const gpuData = new Float32Array(this.readbackBuffer.getMappedRange());
 
+    // DEBUG: Sample the GPU data to check what was rendered
+    const floatsPerRow = this.readbackBytesPerRow / 4; // Float32 = 4 bytes
+    let maxAlpha = 0;
+    const samplePixels: { r: number; g: number; b: number; a: number }[] = [];
+    for (
+      let py = 0;
+      py < rectHeight && samplePixels.length < 5;
+      py += Math.max(1, Math.floor(rectHeight / 5))
+    ) {
+      for (
+        let px = 0;
+        px < rectWidth && samplePixels.length < 5;
+        px += Math.max(1, Math.floor(rectWidth / 5))
+      ) {
+        const bufferX = rect.left + px;
+        const bufferY = rect.top + py;
+        const srcIdx = bufferY * floatsPerRow + bufferX * 4;
+        const a = gpuData[srcIdx + 3] ?? 0;
+        if (a > 0.001) {
+          samplePixels.push({
+            r: gpuData[srcIdx] ?? 0,
+            g: gpuData[srcIdx + 1] ?? 0,
+            b: gpuData[srcIdx + 2] ?? 0,
+            a: a,
+          });
+          maxAlpha = Math.max(maxAlpha, a);
+        }
+      }
+    }
+    console.log(
+      '[GPU compositeToLayer] rect:',
+      rect,
+      'maxAlpha:',
+      maxAlpha.toFixed(3),
+      'samples:',
+      samplePixels.map(
+        (p) => `rgba(${p.r.toFixed(2)},${p.g.toFixed(2)},${p.b.toFixed(2)},${p.a.toFixed(3)})`
+      )
+    );
+
     // Get layer data for compositing
     const layerData = layerCtx.getImageData(rect.left, rect.top, rectWidth, rectHeight);
-    const floatsPerRow = this.readbackBytesPerRow / 4; // Float32 = 4 bytes
 
     // Composite using Porter-Duff over
     for (let py = 0; py < rectHeight; py++) {
@@ -376,16 +511,9 @@ export class GPUStrokeAccumulator {
 
   /**
    * Get preview canvas for display during stroke
-   * NOTE: For real-time preview, we'd need async GPU readback which adds latency.
-   * Current implementation returns a canvas that may be slightly behind.
+   * Updated asynchronously via updatePreview() after each flushBatch()
    */
   getCanvas(): HTMLCanvasElement {
-    // For now, return empty preview canvas
-    // Real implementation would need WebGPU → Canvas bridge
-    // Options:
-    // 1. Use WebGPU canvas context (preferred but requires canvas integration)
-    // 2. Async readback (adds latency)
-    // 3. CPU fallback during stroke, GPU for composite only
     return this.previewCanvas;
   }
 
@@ -433,6 +561,7 @@ export class GPUStrokeAccumulator {
     this.instanceBuffer.destroy();
     this.brushPipeline.destroy();
     this.readbackBuffer?.destroy();
+    this.previewReadbackBuffer?.destroy();
     this.profiler.destroy();
   }
 }

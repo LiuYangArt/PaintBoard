@@ -16,7 +16,7 @@ export class PingPongBuffer {
   private currentDest: GPUTexture;
   private device: GPUDevice;
 
-  readonly format: GPUTextureFormat = 'rgba16float';
+  readonly format: GPUTextureFormat = 'rgba32float'; // Changed from rgba16float for easy readback
   private _width: number;
   private _height: number;
 

@@ -2,15 +2,17 @@
  * InstanceBuffer - GPU buffer for batched dab rendering
  *
  * Manages a dynamic buffer for GPU instancing of brush dabs.
- * Each dab is packed as 32 bytes (8 floats) for efficient GPU transfer.
+ * Each dab is packed as 36 bytes (9 floats) for efficient GPU transfer.
  *
  * Layout per instance:
- * | Offset | Size | Field    | Description         |
- * |--------|------|----------|---------------------|
- * | 0      | 8    | position | vec2<f32> (x, y)    |
- * | 8      | 4    | size     | f32 (radius)        |
- * | 12     | 4    | hardness | f32 (0-1)           |
- * | 16     | 16   | color    | vec4<f32> (r,g,b,a) |
+ * | Offset | Size | Field      | Description              |
+ * |--------|------|------------|--------------------------|
+ * | 0      | 8    | position   | vec2<f32> (x, y)         |
+ * | 8      | 4    | size       | f32 (radius)             |
+ * | 12     | 4    | hardness   | f32 (0-1)                |
+ * | 16     | 12   | color      | vec3<f32> (r,g,b)        |
+ * | 28     | 4    | dabOpacity | f32 (alpha ceiling)      |
+ * | 32     | 4    | flow       | f32 (per-dab flow)       |
  */
 
 import {
@@ -63,7 +65,8 @@ export class InstanceBuffer {
     this.cpuData[offset + 4] = dab.r;
     this.cpuData[offset + 5] = dab.g;
     this.cpuData[offset + 6] = dab.b;
-    this.cpuData[offset + 7] = dab.a;
+    this.cpuData[offset + 7] = dab.dabOpacity;
+    this.cpuData[offset + 8] = dab.flow;
 
     // Update bounding box
     this.minX = Math.min(this.minX, dab.x - dab.size);

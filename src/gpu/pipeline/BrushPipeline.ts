@@ -48,7 +48,7 @@ export class BrushPipeline {
         {
           binding: 1,
           visibility: GPUShaderStage.FRAGMENT,
-          texture: { sampleType: 'float' },
+          texture: { sampleType: 'unfilterable-float' }, // rgba32float requires unfilterable-float
         },
       ],
     });
@@ -68,7 +68,7 @@ export class BrushPipeline {
         entryPoint: 'vs_main',
         buffers: [
           {
-            // Instance buffer layout (per-instance data)
+            // Instance buffer layout (per-instance data, 36 bytes)
             arrayStride: DAB_INSTANCE_SIZE,
             stepMode: 'instance',
             attributes: [
@@ -91,10 +91,22 @@ export class BrushPipeline {
                 format: 'float32',
               },
               {
-                // color: vec4<f32>
+                // color: vec3<f32> (r, g, b)
                 shaderLocation: 3,
                 offset: 16,
-                format: 'float32x4',
+                format: 'float32x3',
+              },
+              {
+                // dabOpacity: f32 (alpha ceiling)
+                shaderLocation: 4,
+                offset: 28,
+                format: 'float32',
+              },
+              {
+                // flow: f32
+                shaderLocation: 5,
+                offset: 32,
+                format: 'float32',
               },
             ],
           },
@@ -105,7 +117,7 @@ export class BrushPipeline {
         entryPoint: 'fs_main',
         targets: [
           {
-            format: 'rgba16float',
+            format: 'rgba32float', // Changed from rgba16float for easy readback
             // No hardware blend - Alpha Darken is done in shader
             blend: undefined,
           },

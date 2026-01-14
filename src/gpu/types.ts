@@ -8,7 +8,7 @@ import type { Rect } from '@/utils/strokeBuffer';
 
 /**
  * Dab instance data for GPU instancing
- * Layout: 32 bytes per instance (8 floats)
+ * Layout: 36 bytes per instance (9 floats)
  */
 export interface DabInstanceData {
   x: number; // Dab center X
@@ -18,7 +18,8 @@ export interface DabInstanceData {
   r: number; // Color R (0-1)
   g: number; // Color G (0-1)
   b: number; // Color B (0-1)
-  a: number; // dabOpacity * flow (0-1)
+  dabOpacity: number; // Alpha ceiling for Alpha Darken (0-1)
+  flow: number; // Per-dab flow multiplier (0-1)
 }
 
 /**
@@ -104,8 +105,8 @@ export interface GPUDabParams {
 /**
  * Instance buffer layout constants
  */
-export const DAB_INSTANCE_SIZE = 32; // bytes per instance
-export const DAB_FLOATS_PER_INSTANCE = 8; // floats per instance
+export const DAB_INSTANCE_SIZE = 36; // bytes per instance
+export const DAB_FLOATS_PER_INSTANCE = 9; // floats per instance
 export const INITIAL_INSTANCE_CAPACITY = 1024;
 
 /**

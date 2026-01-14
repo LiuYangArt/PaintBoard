@@ -31,16 +31,20 @@ struct Uniforms {
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) local_uv: vec2<f32>,      // -1 to 1 within quad
-    @location(1) color: vec4<f32>,          // RGBA (A = dabOpacity * flow)
+    @location(1) color: vec3<f32>,          // RGB color
     @location(2) hardness: f32,
+    @location(3) dab_opacity: f32,          // Alpha ceiling for Alpha Darken
+    @location(4) flow: f32,                 // Per-dab flow multiplier
 };
 
-// Instance data from vertex buffer (matches InstanceBuffer layout)
+// Instance data from vertex buffer (matches InstanceBuffer layout, 36 bytes)
 struct DabInstance {
     @location(0) dab_pos: vec2<f32>,       // Dab center position (pixels)
     @location(1) dab_size: f32,            // Dab radius (pixels)
     @location(2) hardness: f32,            // Edge hardness (0-1)
-    @location(3) color: vec4<f32>,         // RGBA (A = dabOpacity * flow)
+    @location(3) color: vec3<f32>,         // RGB color (0-1)
+    @location(4) dab_opacity: f32,         // Alpha ceiling (0-1)
+    @location(5) flow: f32,                // Per-dab flow (0-1)
 };
 
 // ============================================================================
@@ -70,6 +74,8 @@ fn vs_main(
     out.local_uv = local_pos;
     out.color = instance.color;
     out.hardness = instance.hardness;
+    out.dab_opacity = instance.dab_opacity;
+    out.flow = instance.flow;
     return out;
 }
 
@@ -153,10 +159,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // ========================================================================
     // Alpha Darken Blending
     // CRITICAL: Must match maskCache.ts blendPixel() exactly!
+    // srcAlpha = mask * flow (NOT mask * dabOpacity * flow)
+    // dabOpacity is the ceiling for alpha accumulation
     // ========================================================================
 
-    let src_alpha = mask * in.color.a;
-    let dab_opacity = in.color.a;  // Accumulation ceiling
+    let src_alpha = mask * in.flow;  // Corrected: mask * flow only
+    let dab_opacity = in.dab_opacity;  // Separate ceiling value
 
     // Read from SOURCE texture (previous frame state)
     let pixel_coord = vec2<i32>(in.position.xy);
@@ -178,10 +186,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var out_rgb: vec3<f32>;
     if (dst_a > 0.001) {
         // Existing color: blend toward new color
-        out_rgb = dst.rgb + (in.color.rgb - dst.rgb) * src_alpha;
+        out_rgb = dst.rgb + (in.color - dst.rgb) * src_alpha;
     } else {
         // No existing color: use source directly
-        out_rgb = in.color.rgb;
+        out_rgb = in.color;
     }
 
     return vec4<f32>(out_rgb, out_a);
