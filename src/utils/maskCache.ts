@@ -76,6 +76,37 @@ export class MaskCache {
   private centerY: number = 0;
 
   /**
+   * Alpha Darken blend a single pixel
+   * Shared by stampToBuffer and stampHardBrush to avoid duplication
+   */
+  private blendPixel(
+    buffer: Uint8ClampedArray,
+    idx: number,
+    srcAlpha: number,
+    dabOpacity: number,
+    r: number,
+    g: number,
+    b: number
+  ): void {
+    const dstR = buffer[idx]!;
+    const dstG = buffer[idx + 1]!;
+    const dstB = buffer[idx + 2]!;
+    const dstA = buffer[idx + 3]! / 255;
+
+    // Alpha Darken: lerp toward ceiling
+    const outA = dstA >= dabOpacity - 0.001 ? dstA : dstA + (dabOpacity - dstA) * srcAlpha;
+
+    if (outA > 0.001) {
+      // Color blend: lerp if existing, else use source directly
+      const hasColor = dstA > 0.001;
+      buffer[idx] = (hasColor ? dstR + (r - dstR) * srcAlpha : r) + 0.5;
+      buffer[idx + 1] = (hasColor ? dstG + (g - dstG) * srcAlpha : g) + 0.5;
+      buffer[idx + 2] = (hasColor ? dstB + (b - dstB) * srcAlpha : b) + 0.5;
+      buffer[idx + 3] = outA * 255 + 0.5;
+    }
+  }
+
+  /**
    * Check if the mask needs to be regenerated
    */
   needsUpdate(params: MaskCacheParams): boolean {
@@ -264,31 +295,7 @@ export class MaskCache {
 
         const srcAlpha = maskValue * flow;
         const idx = (bufferRowStart + bufferLeft + mx) * 4;
-
-        // Read destination
-        const dstR = buffer[idx]!;
-        const dstG = buffer[idx + 1]!;
-        const dstB = buffer[idx + 2]!;
-        const dstA = buffer[idx + 3]! / 255;
-
-        // Alpha Darken: lerp toward ceiling, clamp if already reached
-        const outA = dstA >= dabOpacity - 0.001 ? dstA : dstA + (dabOpacity - dstA) * srcAlpha;
-
-        if (outA > 0.001) {
-          // Color blending: always lerp (removes branch, unified path)
-          // When dstA is 0, lerp from dstR (which is 0) to r gives r * srcAlpha
-          // But we want r when there's no existing color, so handle initial case
-          const outR = dstA > 0.001 ? dstR + (r - dstR) * srcAlpha : r;
-          const outG = dstA > 0.001 ? dstG + (g - dstG) * srcAlpha : g;
-          const outB = dstA > 0.001 ? dstB + (b - dstB) * srcAlpha : b;
-
-          // Uint8ClampedArray auto-clamps to 0-255, avoiding expensive Math.round/min/max
-          // +0.5 for rounding (truncation with offset = round)
-          buffer[idx] = outR + 0.5;
-          buffer[idx + 1] = outG + 0.5;
-          buffer[idx + 2] = outB + 0.5;
-          buffer[idx + 3] = outA * 255 + 0.5;
-        }
+        this.blendPixel(buffer, idx, srcAlpha, dabOpacity, r, g, b);
       }
     }
 
@@ -391,26 +398,7 @@ export class MaskCache {
 
         const srcAlpha = maskValue * flow;
         const idx = (rowStart + px) * 4;
-
-        // Read destination
-        const dstR = buffer[idx]!;
-        const dstG = buffer[idx + 1]!;
-        const dstB = buffer[idx + 2]!;
-        const dstA = buffer[idx + 3]! / 255;
-
-        // Alpha Darken
-        const outA = dstA >= dabOpacity - 0.001 ? dstA : dstA + (dabOpacity - dstA) * srcAlpha;
-
-        if (outA > 0.001) {
-          const outR = dstA > 0.001 ? dstR + (r - dstR) * srcAlpha : r;
-          const outG = dstA > 0.001 ? dstG + (g - dstG) * srcAlpha : g;
-          const outB = dstA > 0.001 ? dstB + (b - dstB) * srcAlpha : b;
-
-          buffer[idx] = outR + 0.5;
-          buffer[idx + 1] = outG + 0.5;
-          buffer[idx + 2] = outB + 0.5;
-          buffer[idx + 3] = outA * 255 + 0.5;
-        }
+        this.blendPixel(buffer, idx, srcAlpha, dabOpacity, r, g, b);
       }
     }
 
