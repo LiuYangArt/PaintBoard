@@ -76,10 +76,15 @@ export class StrokeAccumulator {
 
   // Canvas sync throttling - sync every N dabs instead of every dab
   private syncCounter: number = 0;
-  private static readonly SYNC_INTERVAL = 2; // Sync every 2 dabs
+  private static readonly SYNC_INTERVAL = 4; // Sync every 4 dabs (reduced from 2)
 
   // Accumulated dirty rect for batched syncing
   private pendingDirtyRect: Rect = { left: 0, top: 0, right: 0, bottom: 0 };
+
+  // Reusable ImageData for sync operations - avoids allocation per sync
+  private syncImageData: ImageData | null = null;
+  private syncImageDataWidth: number = 0;
+  private syncImageDataHeight: number = 0;
 
   // Legacy fields (kept for compatibility)
   private persistentBuffer: Uint8ClampedArray | null = null;
@@ -151,6 +156,7 @@ export class StrokeAccumulator {
     this.bufferData = null;
     this.persistentBuffer = null;
     this.useRustPath = false;
+    // Don't clear syncImageData - it can be reused across strokes
   }
 
   /**
@@ -235,6 +241,7 @@ export class StrokeAccumulator {
   /**
    * Stamp an elliptical dab onto the buffer with anti-aliasing
    * Uses cached mask for performance (Krita-style optimization)
+   * Hard brushes (hardness >= 0.99) use a fast path that skips mask caching
    *
    * Krita-style unified formula: dabAlpha = maskShape * flow * dabOpacity
    * - maskShape: pure geometric gradient (0-1), center always = 1.0
@@ -259,34 +266,54 @@ export class StrokeAccumulator {
     if (!this.bufferData) return;
 
     const rgb = hexToRgb(color);
+    let dabDirtyRect: Rect;
 
-    // Build cache params
-    const cacheParams: MaskCacheParams = {
-      size,
-      hardness,
-      roundness,
-      angle,
-      maskType,
-    };
+    // Fast path for hard brushes - skip mask caching entirely
+    if (hardness >= 0.99) {
+      dabDirtyRect = this.maskCache.stampHardBrush(
+        this.bufferData,
+        this.width,
+        this.height,
+        x,
+        y,
+        size / 2, // radius
+        roundness,
+        angle,
+        flow,
+        dabOpacity,
+        rgb.r,
+        rgb.g,
+        rgb.b
+      );
+    } else {
+      // Soft brushes use cached mask
+      const cacheParams: MaskCacheParams = {
+        size,
+        hardness,
+        roundness,
+        angle,
+        maskType,
+      };
 
-    // Only regenerate mask when parameters change (major performance win)
-    if (this.maskCache.needsUpdate(cacheParams)) {
-      this.maskCache.generateMask(cacheParams);
+      // Only regenerate mask when parameters change (major performance win)
+      if (this.maskCache.needsUpdate(cacheParams)) {
+        this.maskCache.generateMask(cacheParams);
+      }
+
+      // Use cached mask for fast blending
+      dabDirtyRect = this.maskCache.stampToBuffer(
+        this.bufferData,
+        this.width,
+        this.height,
+        x,
+        y,
+        flow,
+        dabOpacity,
+        rgb.r,
+        rgb.g,
+        rgb.b
+      );
     }
-
-    // Use cached mask for fast blending
-    const dabDirtyRect = this.maskCache.stampToBuffer(
-      this.bufferData,
-      this.width,
-      this.height,
-      x,
-      y,
-      flow,
-      dabOpacity,
-      rgb.r,
-      rgb.g,
-      rgb.b
-    );
 
     // Expand main dirty rect
     if (dabDirtyRect.right > dabDirtyRect.left && dabDirtyRect.bottom > dabDirtyRect.top) {
@@ -326,8 +353,19 @@ export class StrokeAccumulator {
 
     if (width <= 0 || height <= 0) return;
 
+    // Reuse ImageData if dimensions match, otherwise allocate new one
+    if (
+      !this.syncImageData ||
+      this.syncImageDataWidth !== width ||
+      this.syncImageDataHeight !== height
+    ) {
+      this.syncImageData = new ImageData(width, height);
+      this.syncImageDataWidth = width;
+      this.syncImageDataHeight = height;
+    }
+
     // Extract region from persistent buffer and sync to canvas
-    const regionData = new ImageData(width, height);
+    const regionData = this.syncImageData;
     for (let py = 0; py < height; py++) {
       const srcStart = ((top + py) * this.width + left) * 4;
       const dstStart = py * width * 4;
