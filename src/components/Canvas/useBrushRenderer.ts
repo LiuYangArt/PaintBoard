@@ -8,7 +8,6 @@
 import { useRef, useCallback } from 'react';
 import { StrokeAccumulator, BrushStamper, DabParams, MaskType } from '@/utils/strokeBuffer';
 import { applyPressureCurve, PressureCurve } from '@/stores/tool';
-import { HARD_BRUSH_THRESHOLD } from '@/constants';
 
 export interface BrushRenderConfig {
   size: number;
@@ -38,13 +37,6 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
   const strokeBufferRef = useRef<StrokeAccumulator | null>(null);
   const stamperRef = useRef<BrushStamper>(new BrushStamper());
 
-  // Track stroke rendering mode for endStroke and preview
-  // - 'ceiling': opacity applied at dab level (hard brush OR opacity pressure enabled)
-  // - 'postMultiply': opacity applied at endStroke (soft brush without opacity pressure)
-  const renderModeRef = useRef<'ceiling' | 'postMultiply'>('ceiling');
-  // Store the base opacity for Post-Multiply mode
-  const baseOpacityRef = useRef<number>(1.0);
-
   // Initialize or resize stroke buffer
   const ensureStrokeBuffer = useCallback(() => {
     if (!strokeBufferRef.current) {
@@ -65,8 +57,6 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
     const buffer = ensureStrokeBuffer();
     buffer.beginStroke();
     stamperRef.current.beginStroke();
-    renderModeRef.current = 'ceiling'; // Default, will be set in processPoint
-    baseOpacityRef.current = 1.0;
   }, [ensureStrokeBuffer]);
 
   /**
@@ -98,50 +88,23 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
         const dabSize = config.pressureSizeEnabled ? config.size * dabPressure : config.size;
         const dabFlow = config.pressureFlowEnabled ? config.flow * dabPressure : config.flow;
 
-        const isHardBrush = config.hardness >= HARD_BRUSH_THRESHOLD;
-
-        // Determine rendering strategy (Krita-style):
-        // 1. Hard brush: use opacityCeiling (clamp max alpha, preserves solid edges)
-        // 2. Soft brush + opacity pressure: use dabOpacity (multiplier, preserves gradient)
-        // 3. Soft brush without opacity pressure: Post-Multiply mode
-        //
-        // Key insight from Krita: opacity should be a MULTIPLIER for soft brushes,
-        // not a CEILING. Ceiling clips the gradient causing "flat-top" artifacts.
-
-        const finalFlow = dabFlow;
-        let ceiling: number | undefined = undefined;
-        let dabOpacity: number = 1.0;
-
-        if (isHardBrush) {
-          // Hard brush: use ceiling mode (clamps alpha, preserves solid edges)
-          ceiling = config.pressureOpacityEnabled ? config.opacity * dabPressure : config.opacity;
-          dabOpacity = 1.0;
-          renderModeRef.current = 'ceiling';
-        } else if (config.pressureOpacityEnabled) {
-          // Soft brush + opacity pressure: use dabOpacity as multiplier
-          // This preserves the gradient while applying per-dab opacity
-          ceiling = undefined;
-          dabOpacity = config.opacity * dabPressure;
-          renderModeRef.current = 'ceiling'; // Opacity is baked into buffer
-        } else {
-          // Soft brush without opacity pressure: Post-Multiply mode
-          // Opacity applied at endStroke to preserve full gradient range
-          ceiling = undefined;
-          dabOpacity = 1.0;
-          renderModeRef.current = 'postMultiply';
-          baseOpacityRef.current = config.opacity;
-        }
+        // Krita-style unified formula (same for ALL brush types):
+        // dabAlpha = maskShape * flow * dabOpacity
+        // Opacity is ALWAYS applied at dab level as a multiplier.
+        // This ensures consistent behavior across all brush hardness levels.
+        const dabOpacity = config.pressureOpacityEnabled
+          ? config.opacity * dabPressure
+          : config.opacity;
 
         const dabParams: DabParams = {
           x: dab.x,
           y: dab.y,
           size: Math.max(1, dabSize),
-          flow: finalFlow,
+          flow: dabFlow,
           hardness: config.hardness / 100, // Convert from 0-100 to 0-1
           maskType: config.maskType,
           color: config.color,
-          opacityCeiling: ceiling,
-          dabOpacity, // Krita-style: multiplier for entire dab (preserves gradient)
+          dabOpacity, // Krita-style: multiplier for entire dab (consistent for all brushes)
           roundness: config.roundness / 100, // Convert from 0-100 to 0-1
           angle: config.angle,
         };
@@ -154,20 +117,17 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
 
   /**
    * End stroke and composite to layer
+   * Opacity is already baked into the buffer at dab level, so we use 1.0 here.
    */
-  const endStroke = useCallback((layerCtx: CanvasRenderingContext2D, opacity: number) => {
+  const endStroke = useCallback((layerCtx: CanvasRenderingContext2D, _opacity: number) => {
     const buffer = strokeBufferRef.current;
     if (!buffer) return;
 
     // Reset stamper state (no artificial fadeout - rely on natural pressure)
     stamperRef.current.finishStroke(0);
 
-    // Determine final opacity based on render mode:
-    // - Ceiling mode: opacity already baked into buffer, use 1.0
-    // - Post-Multiply mode: apply opacity as multiplier
-    const finalOpacity = renderModeRef.current === 'ceiling' ? 1.0 : opacity;
-
-    buffer.endStroke(layerCtx, finalOpacity);
+    // Krita-style: opacity is already applied at dab level, so use 1.0 here
+    buffer.endStroke(layerCtx, 1.0);
   }, []);
 
   /**
@@ -179,12 +139,11 @@ export function useBrushRenderer({ width, height }: UseBrushRendererProps) {
 
   /**
    * Get the current preview opacity.
-   * This ensures preview matches the final endStroke result exactly.
-   * - Ceiling mode: returns 1.0 (opacity already in buffer)
-   * - Post-Multiply mode: returns base opacity
+   * Krita-style: opacity is already baked into buffer at dab level,
+   * so preview always uses 1.0 for accurate WYSIWYG.
    */
   const getPreviewOpacity = useCallback(() => {
-    return renderModeRef.current === 'ceiling' ? 1.0 : baseOpacityRef.current;
+    return 1.0;
   }, []);
 
   /**
