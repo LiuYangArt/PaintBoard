@@ -88,14 +88,20 @@
 #### 1.1 颜色空间对齐（极其关键！）
 
 > [!CAUTION]
-> 这是"视觉看起来不对"的隐形杀手。Canvas 2D 在 sRGB 空间混合，GPU 默认可能是 Linear。
+> Canvas 2D 在 **Gamma 编码空间（非线性 sRGB）** 中直接做加减乘除，这在物理上是错的，但它是 Web 标准。
 
-**检查项**:
+**数学空间陷阱**：
 
-- [ ] 确认 WebGPU Canvas Context 的 `colorSpace` 设置为 `srgb`
-- [ ] Shader 中不做 Gamma 转换，直接在 sRGB 空间混合
+- Canvas 2D: 非线性空间做 `mix()`
+- WebGPU `rgba16float`: 通常被视为线性空间
+- **结果**: 即使两端颜色一样，中间过渡色也会不同（GPU 更亮）
 
-**配置**:
+**强制一致方案**:
+
+1. 输入：传入 Shader 的颜色保持 sRGB 值（不转 Linear）
+2. 计算：直接对 sRGB 值做 Alpha Darken / Mix
+3. 输出：直接输出结果
+4. 极端手段：若驱动强制线性化，需手动 `LinearToSRGB`/`SRGBToLinear` 逆变换抵消
 
 ```typescript
 // WebGPU Canvas 配置
@@ -119,9 +125,17 @@ canvas.getContext('webgpu', { colorSpace: 'srgb' });
 
 fn get_gaussian(dist: f32) -> f32 {
     let index = u32(clamp(dist, 0.0, 1.0) * 1023.0);
-    return gaussian_table[index]; // 与 CPU 查表完全一致
+    return gaussian_table[index];
 }
 ```
+
+> [!WARNING]
+> **索引对齐陷阱**: GPU `u32()` = `floor`，若 CPU 用 `Math.round`，边界值会有 1 索引偏差。
+>
+> 需复查 `maskCache.ts` 的索引逻辑：
+>
+> - CPU `Math.floor(val * 1023)` → GPU `u32(val * 1023.0)`
+> - CPU `Math.round(val * 1023)` → GPU `u32(val * 1023.0 + 0.5)`
 
 #### 1.4 预乘 Alpha 守卫代码
 
@@ -173,13 +187,44 @@ let half_pixel = pixel_size * 0.5;
 
 1. `PointerDown`: 检测混合模式
    - Normal 模式：不需要背景
-   - 其他模式：从 Canvas 2D 抓取笔刷包围盒区域到 `bg_texture`
+   - 其他模式：抓取笔刷包围盒区域到 `bg_texture`
 2. `PointerMove`: Shader 中 `out = Blend(bg_texture, brush_color)`
 3. `PointerUp`: 回读并合成（或覆盖）
+
+> [!CAUTION]
+> **性能陷阱**: 4K 画布上传会导致起笔延迟！
+
+**脏矩形优化**:
+
+```typescript
+// 只上传笔刷包围盒区域，而非整个 Canvas
+const imageData = ctx.getImageData(x, y, w, h); // 只获取包围盒
+device.queue.writeTexture(
+  { texture: bgTexture, origin: { x, y } }, // 指定 offset
+  imageData.data,
+  { bytesPerRow: w * 4 },
+  { width: w, height: h }
+);
+```
+
+**收益**: 普通笔触的数据量减少 99%，消除起笔延迟。
 
 ---
 
 ### Phase 3: 验证
+
+#### 3.1 Shader 单元测试（推荐）
+
+> [!TIP]
+> 不渲染像素，先验证数学公式。比看图找茬更快更精准。
+
+```typescript
+// Compute Shader 测试：输入 (dist, size, hardness)，输出计算结果
+// JS 读取 Buffer，与 CPU maskCache 函数返回值对比
+expect(gpuResult).toBeCloseTo(cpuResult, 5); // 5 位精度
+```
+
+#### 3.2 验证标准
 
 | 测试项     | 方法                   | 通过标准   |
 | ---------- | ---------------------- | ---------- |
