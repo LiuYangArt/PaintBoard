@@ -167,7 +167,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let center = (2.5 * (6761.0 * safe_fade - 10000.0)) / (SQRT_2 * 6761.0 * safe_fade);
         let alphafactor = 1.0 / (2.0 * erf_approx(center));
 
-        // FIXED: Add dab_size normalization to match CPU maskCache.ts
+        // Calculate distance factor for Gaussian falloff
+        // Corresponds to CPU: distScale = (Math.SQRT2 * 12500) / (6761 * safeFade * diameter)
         let distfactor = (SQRT_2 * 12500.0) / (6761.0 * safe_fade * in.dab_size);
 
         // Convert normalized dist to physical distance, then scale
