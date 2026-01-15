@@ -1,7 +1,7 @@
 # 抬笔闪烁问题调研与修复计划
 
 > **日期**: 2026-01-15
-> **状态**: ✅ Phase 2.6 已完成（待测试验证）
+> **状态**: 🔧 Phase 2.7 待实施（修复 PointerMove 竞态）
 > **优先级**: P1
 > **关联**: [gpu-rendering-fix-plan.md](./gpu-rendering-fix-plan.md)
 
@@ -614,8 +614,177 @@ const handlePointerUp = useCallback(
 const beginStroke = useCallback(async (hardness: number = 100): Promise<void> => {
   console.log(`[useBrushRenderer] beginStroke START`);
   // ...
-}, []);
 ```
+
+### Phase 2.7: 修复 PointerMove 竞态 (待实施)
+
+> Phase 2.6 实施后测试发现：快速频繁下笔时仍偶尔出现笔触丢失
+
+#### 问题分析
+
+**根因**：`handlePointerMove` 不等待 `beginStrokePromise` 完成就调用 `processBrushPointWithConfig`。
+
+**竞态时序**：
+
+```
+t0: PointerDown_1 → isDrawingRef = true
+t1: beginStrokePromiseRef = task_1 (等待上一笔 finishingPromise)
+t2: PointerMove_1 触发
+t3: isDrawingRef.current = true → 检查通过！
+t4: processBrushPointWithConfig()
+t5: gpuBuffer.stampDab() → if (!this.active) return; → 点丢失！
+    (因为 task_1 还在等待，beginStroke 未执行，this.active = false)
+```
+
+**关键代码路径**：
+
+```typescript
+// GPUStrokeAccumulator.ts
+stampDab(params: GPUDabParams): void {
+  if (!this.active) return;  // ← 问题点：stroke 未开始时直接丢弃
+  ...
+}
+
+// Canvas/index.tsx - handlePointerMove
+if (!isDrawingRef.current) return;
+// 没有等待 beginStrokePromise！
+if (currentTool === 'brush') {
+  processBrushPointWithConfig(canvasX, canvasY, pressure);  // ← 可能在 beginStroke 完成前执行
+}
+```
+
+**问题场景**：
+
+1. 用户快速连续点击
+2. Stroke 1 的 finishingPromise 还在执行
+3. Stroke 2 的 PointerDown 设置 `isDrawingRef = true`，但 `beginStroke` 在等待
+4. Stroke 2 的 PointerMove 通过 `isDrawingRef` 检查
+5. `stampDab` 因 `!this.active` 丢弃点
+
+#### 修复方案
+
+> [!IMPORTANT]
+> **Review 建议**：不要继续加锁，而是使用 **状态机 + 输入缓冲**。加锁只能缓解问题，真正需要的是事件与 Stroke 生命周期的对齐。
+
+**优化 12: 状态机 + 输入缓冲 (推荐方案)**
+
+**核心思路**：
+
+1. Stroke 有明确状态：`Idle → Starting → Active → Finishing → Idle`
+2. 在 `Starting` 阶段，把所有点先缓存起来，不丢给 GPU（因为 active 还没 true）
+3. `beginBrushStroke()` 完成后：进入 `Active`，回放缓存点
+4. 如果 `PointerUp` 在 `Starting` 阶段就来了：标记 `pendingEnd`，等 begin 完成后立刻走 `endStroke`
+
+**实现方案**：
+
+```typescript
+// Canvas/index.tsx 或 useBrushRenderer.ts
+
+// 1. 定义状态类型
+type StrokeState = 'idle' | 'starting' | 'active' | 'finishing';
+
+// 2. 新增 Ref
+const strokeStateRef = useRef<StrokeState>('idle');
+const pendingPointsRef = useRef<Array<{ x: number; y: number; pressure: number }>>([]);
+const pendingEndRef = useRef(false);  // 标记是否在 Starting 阶段收到 PointerUp
+
+// 3. handlePointerDown 修改
+const handlePointerDown = useCallback((e: React.PointerEvent) => {
+  // ... 前置逻辑 ...
+
+  if (currentTool === 'brush') {
+    // 进入 Starting 状态
+    strokeStateRef.current = 'starting';
+    pendingPointsRef.current = [];  // 清空缓冲
+    pendingEndRef.current = false;
+
+    // 缓存第一个点
+    pendingPointsRef.current.push({ x: canvasX, y: canvasY, pressure });
+
+    // 异步开始笔触
+    (async () => {
+      try {
+        await beginBrushStroke(brushHardness);
+
+        // 进入 Active 状态
+        strokeStateRef.current = 'active';
+
+        // 回放所有缓存的点
+        for (const pt of pendingPointsRef.current) {
+          processBrushPointWithConfig(pt.x, pt.y, pt.pressure);
+        }
+        pendingPointsRef.current = [];
+
+        // 如果在 Starting 阶段就收到了 PointerUp，立即结束
+        if (pendingEndRef.current) {
+          await finishCurrentStroke();
+        }
+      } catch (error) {
+        console.error('[Canvas] Failed to start stroke:', error);
+        strokeStateRef.current = 'idle';
+      }
+    })();
+  }
+}, [...]);
+
+// 4. handlePointerMove 修改
+const handlePointerMove = useCallback((e: React.PointerEvent) => {
+  // ... 前置逻辑 ...
+
+  if (currentTool === 'brush') {
+    if (strokeStateRef.current === 'starting') {
+      // Starting 阶段：缓存点，稍后回放
+      pendingPointsRef.current.push({ x: canvasX, y: canvasY, pressure });
+    } else if (strokeStateRef.current === 'active') {
+      // Active 阶段：正常处理
+      processBrushPointWithConfig(canvasX, canvasY, pressure);
+    }
+    // idle/finishing 阶段：忽略
+    continue;
+  }
+}, [...]);
+
+// 5. handlePointerUp 修改
+const handlePointerUp = useCallback((e: React.PointerEvent) => {
+  // ... 前置逻辑 ...
+
+  if (strokeStateRef.current === 'starting') {
+    // 还在 Starting：标记 pendingEnd，让 PointerDown 的异步回调处理
+    pendingEndRef.current = true;
+    return;
+  }
+
+  if (strokeStateRef.current === 'active') {
+    strokeStateRef.current = 'finishing';
+    finishCurrentStroke();
+  }
+}, [...]);
+```
+
+**优点**：
+
+- **不丢点**：所有点都被缓存，即使 GPU 还没准备好
+- **不卡顿**：不阻塞事件处理
+- **不死锁**：状态机清晰，没有复杂的锁逻辑
+- **根治问题**：事件与 Stroke 生命周期对齐
+
+---
+
+**备选方案: 串行化 PointerMove（简单但可能有顺序问题）**
+
+在 `handlePointerMove` 中用 Promise.then 等待 beginStroke 完成：
+
+```typescript
+if (strokePromise) {
+  void strokePromise.then(() => {
+    if (isDrawingRef.current) {
+      processBrushPointWithConfig(canvasX, canvasY, pressure);
+    }
+  });
+}
+```
+
+缺点：多个 move 事件可能并发解决，导致顺序问题。
 
 ### Phase 3: 验证 (1 hour)
 

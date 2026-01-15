@@ -1,105 +1,108 @@
-这份更新后的修复计划，特别是 **Phase 2.6**，非常有针对性，**置信度很高**。
+这份更新后的 **Phase 2.7 修复计划** 非常出色。
 
-你非常敏锐地抓住了问题的本质：**虽然底层的 GPU 逻辑（Phase 2 & 2.5）加了锁，但在应用层（Canvas/React）仍然是“发射后不管（Fire-and-forget）”的异步调用**。这导致了在极速操作时，指令到达底层的顺序仍然可能混乱。
+你不仅准确地识别出了 Phase 2.6（加锁）引入的副作用——**“输入真空期”导致的点丢失**，而且提出了**最标准且稳健**的解决方案：**状态机 (State Machine) + 输入缓冲 (Input Buffering)**。
 
-以下是对 Phase 2.6 的详细评估和进一步的优化建议（为了确保万无一失）：
+这比单纯继续加锁要高明得多，因为它解决了异步处理（GPU准备）与同步输入（用户手速）之间的根本矛盾。
 
-### 为什么 Phase 2.6 是关键？
+以下是详细的 Review 和一些实施建议：
 
-你描述的“方块闪一下（但没画上去）”和“笔触丢失”的现象，完美对应了 **应用层的竞态条件**：
+### 1. 核心方案评估 (Optimization 12)
 
-1.  **“方块闪一下”原因**：
-    - **场景**：上一笔还在 `prepareEndStroke`（准备合成），新的一笔 `beginStroke` -> `clear()` 已经执行了。
-    - **后果**：上一笔在合成时，发现 Preview Buffer 已经被新的一笔清空了，或者合成到了错误的图层状态。这就导致了闪烁（Preview 还在，Layer 没上去）或方块（脏区还在，数据没了）。
+**评分：S (强烈推荐)**
 
-2.  **“笔触丢失”原因**：
-    - **场景**：`handlePointerDown` 是异步的。当点击极快时，React 触发了两次 Handler。
-    - **后果**：两个异步任务几乎并行运行。虽然底层有锁，但在应用层传递坐标、压力值时，可能会因为闭包捕获或状态重置时机不对，导致某个点的绘制命令被丢弃。
+- **为什么这是正确的解法？**
+  - **UI 事件是同步且密集的**：浏览器触发 `pointermove` 的频率很高（60-120Hz），且不会等待你的 `Promise`。
+  - **GPU 准备是异步的**：`beginStroke` 可能需要几毫秒甚至更久（如果涉及 `device.queue` 等待）。
+  - **缓冲区的必要性**：在“我想画”到“我可以画”之间的时间差里，必须把用户的意图（坐标点）存起来。这在游戏开发和高性能绘图中是标准模式。
 
-### 对 Phase 2.6 代码的优化建议
+- **对“极速点按”的覆盖**：
+  - 逻辑中包含的 `pendingEndRef` 是点睛之笔。它完美处理了 **PointerDown (Starting) -> PointerUp** 发生在 **beginStroke 完成之前** 的情况。这正是导致“虽然落笔了但没画出来”的元凶。
 
-虽然思路正确，但在 React 组件中实现“Promise 锁队列”时，需要处理好**异常（Catch）**和**事件完整性**，否则一旦某次操作报错，整个笔刷就会“卡死”。
+### 2. 代码逻辑审查
 
-#### 建议 1: 增加 Try-Catch 和 Finally (防止死锁)
+计划中的代码结构很清晰，但我建议在实施时注意以下几个细节，以确保万无一失：
 
-如果 `beginBrushStroke` 因为某种原因（比如 GPU Device Lost）抛出错误，`beginStrokePromiseRef` 必须被正确处理，否则后续所有的点击都会无限等待。
+#### A. 状态重置的安全性 (Critical)
 
-```typescript
-// Canvas/index.tsx
+在 `handlePointerDown` 的 `catch` 块和 `finishCurrentStroke` 之后，必须保证状态回归 `idle`。
 
-const handlePointerDown = useCallback(
-  async (e: React.PointerEvent) => {
-    // ... 前置逻辑 (calculate x, y, pressure) ...
-
-    if (currentTool === 'brush') {
-      // 1. 获取当前的锁（如果存在）
-      const previousPromise = beginStrokePromiseRef.current;
-
-      // 2. 创建新的任务
-      const currentTask = (async () => {
-        try {
-          // 等待上一个任务彻底完成（不管成功失败）
-          if (previousPromise) {
-            await previousPromise.catch((e) => console.warn('Previous stroke failed:', e));
-          }
-
-          // 执行当前任务
-          await beginBrushStroke(brushHardness);
-
-          // 只有在 stroke 成功 begin 后，才处理点
-          // 这一步非常关键，确保 stampDab 不会在 begin 之前执行
-          processBrushPointWithConfig(canvasX, canvasY, pressure);
-        } catch (error) {
-          console.error('Failed to start stroke:', error);
-          // 这里可以加降级逻辑，或者重置状态
-        }
-      })();
-
-      // 3. 更新引用，形成链条
-      beginStrokePromiseRef.current = currentTask;
-
-      // 4. 等待当前任务完成（让 React 事件处理结束，虽然这里 await 不会阻塞 DOM）
-      await currentTask;
-    }
-  },
-  [beginBrushStroke, processBrushPointWithConfig, brushHardness]
-);
-```
-
-#### 建议 2: 处理 PointerUp 的“追尾”
-
-这是一个非常隐蔽的 Bug 源：
-如果 `handlePointerDown` 因为等待锁而被延迟了（比如延迟了 50ms），但用户的动作非常快，`handlePointerUp` 可能在 `handlePointerDown` 真正执行**之前**或者**执行中**触发。
-
-如果 `pointerUp` 触发时，`beginStroke` 还在排队，那么 `endStroke` 可能会报错说“没有激活的笔触”，或者导致这一笔没法正常结束。
-
-**解决方案：在 `handlePointerUp` 中也加入这个锁队列。**
+建议在 `finally` 块中处理状态重置，或者在 `finishCurrentStroke` 内部确保重置。
 
 ```typescript
-// Canvas/index.tsx
+// 建议的补全逻辑
+(async () => {
+  try {
+    await beginBrushStroke(brushHardness);
 
-const handlePointerUp = useCallback(
-  async (e: React.PointerEvent) => {
-    // 确保 PointerDown 的逻辑全部跑完，才跑 PointerUp
-    if (beginStrokePromiseRef.current) {
-      await beginStrokePromiseRef.current;
+    // Check if cancelled or error occurred during await
+    if (strokeStateRef.current !== 'starting') return;
+
+    strokeStateRef.current = 'active';
+
+    // Replay buffer
+    for (const pt of pendingPointsRef.current) {
+      processBrushPointWithConfig(pt.x, pt.y, pt.pressure);
     }
+    pendingPointsRef.current = []; // 及时释放内存
 
-    // 原有的 finish 逻辑
-    finishCurrentStroke();
-  },
-  [finishCurrentStroke]
-);
+    // Handle early exit
+    if (pendingEndRef.current) {
+      strokeStateRef.current = 'finishing'; // 显式转态
+      await finishCurrentStroke();
+    }
+  } catch (error) {
+    console.error('Stroke failed:', error);
+    // 出错必须重置，否则下一次点击会被吞掉
+    strokeStateRef.current = 'idle';
+    pendingPointsRef.current = [];
+  }
+})();
 ```
 
-这样就强制了时序：`Down (Click 1)` -> `Up (Click 1)` -> `Down (Click 2)` -> `Up (Click 2)`，即使事件触发很快，执行顺序也会被强行串行化。
+#### B. `handlePointerUp` 的状态排他性
 
-### 最终评估
+你的计划中 `handlePointerUp` 的逻辑是正确的，但要确保 `finishCurrentStroke` 不会被重复调用。
 
-**方案评分：95/100**
+```typescript
+const handlePointerUp = useCallback((e) => {
+  // ...
 
-**结论**：
-Phase 2.6 是解决剩余“偶发性 Bug”的正确方向。你之前的 GPU 层修复解决了**渲染一致性**问题，现在的 Phase 2.6 解决的是**用户输入指令的时序**问题。两者结合，应该能根治这个问题。
+  // Case 1: 还没开始就结束了 -> 标记 pending，交给 Down 的异步回调去处理
+  if (strokeStateRef.current === 'starting') {
+    pendingEndRef.current = true;
+    return;
+  }
 
-**下一步行动**：
-按计划执行 Phase 2.6，但请务必加上我建议的 **Try-Catch 容错** 和 **PointerUp 的队列等待**，这能防止新的死锁或逻辑错误。
+  // Case 2: 正在画 -> 立即结束
+  if (strokeStateRef.current === 'active') {
+    strokeStateRef.current = 'finishing'; // 立即锁住状态，防止再次触发
+    finishCurrentStroke().finally(() => {
+      strokeStateRef.current = 'idle'; // 确保回到 idle
+    });
+  }
+
+  // Case 3: idle 或 finishing -> 忽略
+}, []);
+```
+
+#### C. `pendingPoints` 的坐标引用
+
+在 `handlePointerDown` 的闭包中，你直接使用了 `pendingPointsRef.current`。请确保 `handlePointerMove` 往里面 `push` 的对象包含了计算好的 `x, y`（基于 Canvas 坐标系），而不是原始的 Event 对象。
+
+- **原因**：React 的 SyntheticEvent 或者 DOM Event 对象在某些浏览器版本中可能是被池化（Pooled）的，异步访问可能会读到空值。
+- **确认**：看你的伪代码是 `push({ x: canvasX, y: canvasY ... })`，这是正确的。
+
+### 3. 补充测试建议 (Phase 3)
+
+除了你列出的测试项，建议增加一个**压力测试**：
+
+- **“帕金森”测试**：在同一个位置极高频率地抖动鼠标并疯狂点击。这会产生大量的 `starting` -> `active` -> `finishing` 快速切换，以及大量的微小 `pointermove`。这是验证状态机是否死锁的最佳方式。
+
+### 总结
+
+这个 **Phase 2.7** 方案是成熟且专业的。
+
+1.  **Phase 2.6 的锁** 解决了 GPU 资源竞争（崩坏/报错）。
+2.  **Phase 2.7 的缓冲** 解决了用户输入丢失（漏画）。
+
+两者结合，应该能彻底解决“闪烁”和“漏笔”问题。**可以直接开始实施。**
