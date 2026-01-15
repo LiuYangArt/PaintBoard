@@ -17,12 +17,15 @@ export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isDrawingRef = useRef(false);
 
-  // Phase 2.7: State machine + input buffering for brush strokes
-  // Solves the race condition where PointerMove/Up arrives before beginStroke completes
+  // Phase 2.7: State machine for brush strokes
+  // Solves race conditions where input events arrive before initialization completes
   type StrokeState = 'idle' | 'starting' | 'active' | 'finishing';
+
+  // State machine refs
   const strokeStateRef = useRef<StrokeState>('idle');
   const pendingPointsRef = useRef<Array<{ x: number; y: number; pressure: number }>>([]);
   const pendingEndRef = useRef(false); // Flag: PointerUp arrived during 'starting' phase
+
   const isZoomingRef = useRef(false);
   const zoomStartRef = useRef<{ x: number; y: number; startScale: number } | null>(null);
   const strokeBufferRef = useRef<StrokeBuffer>(new StrokeBuffer(2));
@@ -665,8 +668,8 @@ export function Canvas() {
   );
 
   // Internal stroke finishing logic (called after state machine validation)
-  // Moved before handlePointerDown to avoid circular dependency
-  const finishCurrentStrokeInternal = useCallback(async () => {
+  // Renamed to finalizeStroke for clarity
+  const finalizeStroke = useCallback(async () => {
     // 清理 WinTab 缓冲区
     clearPointBuffer();
 
@@ -720,43 +723,77 @@ export function Canvas() {
     // Case 2: In 'active' phase - transition to 'finishing' and complete
     if (state === 'active') {
       strokeStateRef.current = 'finishing';
-      await finishCurrentStrokeInternal();
+      await finalizeStroke();
       return;
     }
 
     // Case 3: 'idle' or 'finishing' - ignore (already handled or never started)
-  }, [finishCurrentStrokeInternal]);
+  }, [finalizeStroke]);
 
-  // 指针事件处理
+  /**
+   * Initialize brush stroke asynchronously.
+   * Handles state transitions and replaying buffered input.
+   */
+  const initializeBrushStroke = useCallback(async () => {
+    try {
+      await beginBrushStroke(brushHardness);
+
+      // Check if cancelled or state changed during await
+      if (strokeStateRef.current !== 'starting') {
+        return;
+      }
+
+      // Transition to 'active' state
+      strokeStateRef.current = 'active';
+
+      // Replay all buffered points
+      const points = pendingPointsRef.current;
+      for (const p of points) {
+        processBrushPointWithConfig(p.x, p.y, p.pressure);
+      }
+      pendingPointsRef.current = [];
+
+      // If pendingEnd flag was set during 'starting' phase, finish immediately
+      if (pendingEndRef.current) {
+        strokeStateRef.current = 'finishing';
+        await finalizeStroke();
+      }
+    } catch (err) {
+      console.error('Failed to begin stroke:', err);
+      // Reset state on error to avoid sticking in 'starting'
+      strokeStateRef.current = 'idle';
+      pendingPointsRef.current = [];
+      isDrawingRef.current = false;
+    }
+  }, [beginBrushStroke, brushHardness, finalizeStroke, processBrushPointWithConfig]);
+
+  // Handle pointer down events
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       const container = containerRef.current;
       if (!container) return;
 
-      // 平移模式
+      // Handle Panning (Space key)
       if (spacePressed) {
         setIsPanning(true);
         panStartRef.current = { x: e.clientX, y: e.clientY };
         return;
       }
 
-      // Zoom tool logic
+      // Handle Zoom tool
       if (currentTool === 'zoom') {
         isZoomingRef.current = true;
         zoomStartRef.current = {
-          x: e.clientX, // Global client X for delta calculation
+          x: e.clientX,
           y: e.clientY,
           startScale: scale,
         };
-
         container.setPointerCapture(e.pointerId);
         return;
       }
 
-      // PointerDown: WinTab data might not be ready, so allow PointerEvent pressure fallback
+      // Prepare input data
       const pressure = e.pressure > 0 ? e.pressure : 0.5;
-      const tiltX = e.tiltX ?? 0;
-      const tiltY = e.tiltY ?? 0;
 
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -765,14 +802,17 @@ export function Canvas() {
       const canvasX = (e.clientX - rect.left) / scale;
       const canvasY = (e.clientY - rect.top) / scale;
 
+      // Handle Eyedropper
       if (currentTool === 'eyedropper') {
         pickColorAt(canvasX, canvasY);
         return;
       }
 
+      // Check Layer Validation
       const activeLayer = layers.find((l) => l.id === activeLayerId);
       if (!activeLayerId || !activeLayer?.visible) return;
 
+      // Start Drawing
       canvas.setPointerCapture(e.pointerId);
       isDrawingRef.current = true;
       strokeBufferRef.current.reset();
@@ -780,69 +820,42 @@ export function Canvas() {
       // Capture layer state before stroke starts (for undo)
       captureBeforeImage();
 
+      // Brush Tool: Use State Machine Logic
       if (currentTool === 'brush') {
-        // Phase 2.7: State machine + input buffering
-        // Enter 'starting' state and buffer the first point
         strokeStateRef.current = 'starting';
         pendingPointsRef.current = [{ x: canvasX, y: canvasY, pressure }];
         pendingEndRef.current = false;
 
-        // Async: wait for GPU ready, then replay buffered points
-        (async () => {
-          try {
-            await beginBrushStroke(brushHardness);
+        // Start initialization (fire-and-forget)
+        void initializeBrushStroke();
+        return;
+      }
 
-            // Check if we were cancelled or already moved to different state
-            if (strokeStateRef.current !== 'starting') {
-              return;
-            }
+      // Eraser/Other Tools: Legacy Logic
+      const point: Point = {
+        x: canvasX,
+        y: canvasY,
+        pressure,
+        tiltX: e.tiltX ?? 0,
+        tiltY: e.tiltY ?? 0,
+      };
 
-            // Transition to 'active' state
-            strokeStateRef.current = 'active';
-
-            // Replay all buffered points (including the first one from PointerDown)
-            for (const pt of pendingPointsRef.current) {
-              processBrushPointWithConfig(pt.x, pt.y, pt.pressure);
-            }
-            pendingPointsRef.current = []; // Clear buffer
-
-            // If PointerUp arrived during 'starting', finish now
-            if (pendingEndRef.current) {
-              strokeStateRef.current = 'finishing';
-              await finishCurrentStrokeInternal();
-            }
-          } catch (error) {
-            console.error('[Canvas] Failed to start stroke:', error);
-            // Reset state on error to prevent stuck
-            strokeStateRef.current = 'idle';
-            pendingPointsRef.current = [];
-            isDrawingRef.current = false;
-          }
-        })();
-      } else {
-        // Eraser uses legacy buffer
-        strokeBufferRef.current.addPoint({
-          x: canvasX,
-          y: canvasY,
-          pressure,
-          tiltX,
-          tiltY,
-        });
+      const interpolatedPoints = strokeBufferRef.current.addPoint(point);
+      if (interpolatedPoints.length > 0) {
+        drawPoints(interpolatedPoints);
       }
     },
     [
       spacePressed,
-      setIsPanning,
-      scale,
-      activeLayerId,
-      layers,
       currentTool,
+      scale,
       pickColorAt,
+      layers,
+      activeLayerId,
       captureBeforeImage,
-      beginBrushStroke,
-      processBrushPointWithConfig,
-      brushHardness,
-      finishCurrentStrokeInternal,
+      initializeBrushStroke,
+      drawPoints,
+      setIsPanning,
     ]
   );
 
