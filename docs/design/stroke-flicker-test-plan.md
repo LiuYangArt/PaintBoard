@@ -587,23 +587,23 @@ export async function chaosClicker(
 > [!NOTE]
 > 方案已根据 [review.md](./review.md) 优化，移除实时 `getImageData` 检测。
 
-### Phase 1: 基础设施 (预计 1.5 小时)
+### Phase 1: 基础设施 (预计 1.5 小时) ✅
 
-- [ ] 创建 `src/test/InputSimulator.ts` - 输入模拟器（含网格模式）
-- [ ] 创建 `src/test/GridVerifier.ts` - 事后像素验证器
-- [ ] 创建 `src/test/DiagnosticHooks.ts` - 状态机遥测
+- [x] 创建 `src/test/InputSimulator.ts` - 输入模拟器（含网格模式）
+- [x] 创建 `src/test/GridVerifier.ts` - 事后像素验证器
+- [x] 创建 `src/test/DiagnosticHooks.ts` - 状态机遥测
 
-### Phase 2: E2E 测试 (预计 1 小时)
+### Phase 2: E2E 测试 (预计 1 小时) ✅
 
-- [ ] 创建 `e2e/stroke-flicker.spec.ts` - 网格验证 + 极速点击
-- [ ] 配置 Playwright trace 录制
+- [x] 创建 `e2e/stroke-flicker.spec.ts` - 网格验证 + 极速点击
+- [x] 配置 Playwright trace 录制
 - [ ] 验证 CI 中可运行
 
-### Phase 3: Debug 面板 (预计 1 小时)
+### Phase 3: Debug 面板 (预计 1 小时) ✅
 
-- [ ] 创建 `src/components/DebugPanel/index.tsx`
-- [ ] 添加快捷键 `Shift + Ctrl + D`
-- [ ] 集成网格测试和混沌测试
+- [x] 创建 `src/components/DebugPanel/index.tsx`
+- [x] 添加快捷键 `Shift + Ctrl + D`
+- [x] 集成网格测试和混沌测试
 
 ---
 
