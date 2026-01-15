@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebView Latency Test</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #1a1a2e;
+        color: #e0e0e0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+      }
+      h1 {
+        margin-bottom: 10px;
+        color: #4cc9f0;
+      }
+      .info {
+        font-size: 14px;
+        color: #888;
+        margin-bottom: 20px;
+      }
+      .env-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-bottom: 20px;
+      }
+      .env-tauri {
+        background: #4361ee;
+        color: white;
+      }
+      .env-browser {
+        background: #3a86ff;
+        color: white;
+      }
+
+      canvas {
+        border: 2px solid #4cc9f0;
+        border-radius: 8px;
+        cursor: crosshair;
+        background: #0d0d1a;
+      }
+
+      .stats {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        max-width: 600px;
+      }
+      .stat-card {
+        background: #2a2a4a;
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+      }
+      .stat-label {
+        font-size: 12px;
+        color: #888;
+        margin-bottom: 5px;
+      }
+      .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #4cc9f0;
+      }
+      .stat-unit {
+        font-size: 12px;
+        color: #666;
+      }
+
+      .controls {
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+      }
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        background: #4361ee;
+        color: white;
+        transition: background 0.2s;
+      }
+      button:hover {
+        background: #3a56d4;
+      }
+
+      .latency-log {
+        margin-top: 20px;
+        max-width: 600px;
+        width: 100%;
+        max-height: 200px;
+        overflow-y: auto;
+        background: #0d0d1a;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .log-entry {
+        color: #888;
+      }
+      .log-entry.high {
+        color: #f72585;
+      }
+      .log-entry.medium {
+        color: #ffd60a;
+      }
+      .log-entry.low {
+        color: #4cc9f0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebView Latency Test</h1>
+    <p class="info">Pure Canvas drawing - no React, minimal overhead</p>
+    <span id="envBadge" class="env-badge"></span>
+
+    <canvas id="canvas" width="800" height="400"></canvas>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Average Latency</div>
+        <div class="stat-value" id="avgLatency">--</div>
+        <div class="stat-unit">ms</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Max Latency</div>
+        <div class="stat-value" id="maxLatency">--</div>
+        <div class="stat-unit">ms</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Samples</div>
+        <div class="stat-value" id="sampleCount">0</div>
+        <div class="stat-unit">points</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="clearBtn">Clear Canvas</button>
+      <button id="resetBtn">Reset Stats</button>
+    </div>
+
+    <div class="latency-log" id="log"></div>
+
+    <script>
+      // Environment detection
+      const isTauri = '__TAURI_INTERNALS__' in window;
+      const ua = navigator.userAgent;
+      const isEdge = ua.includes('Edg/');
+      const isChrome = ua.includes('Chrome/') && !isEdge;
+
+      const envBadge = document.getElementById('envBadge');
+      if (isTauri) {
+        envBadge.textContent = `Tauri App (${isEdge ? 'WebView2' : 'Unknown'})`;
+        envBadge.classList.add('env-tauri');
+      } else {
+        envBadge.textContent = `Browser (${isChrome ? 'Chrome' : isEdge ? 'Edge' : 'Other'})`;
+        envBadge.classList.add('env-browser');
+      }
+
+      // Canvas setup
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#4cc9f0';
+
+      // Stats
+      let latencies = [];
+      let isDrawing = false;
+
+      const avgLatencyEl = document.getElementById('avgLatency');
+      const maxLatencyEl = document.getElementById('maxLatency');
+      const sampleCountEl = document.getElementById('sampleCount');
+      const logEl = document.getElementById('log');
+
+      function updateStats() {
+        if (latencies.length === 0) return;
+
+        const avg = latencies.reduce((a, b) => a + b, 0) / latencies.length;
+        const max = Math.max(...latencies);
+
+        avgLatencyEl.textContent = avg.toFixed(2);
+        maxLatencyEl.textContent = max.toFixed(2);
+        sampleCountEl.textContent = latencies.length;
+      }
+
+      function addLog(latency) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        if (latency > 10) entry.classList.add('high');
+        else if (latency > 5) entry.classList.add('medium');
+        else entry.classList.add('low');
+
+        entry.textContent = `${new Date().toLocaleTimeString()}: ${latency.toFixed(2)}ms`;
+        logEl.insertBefore(entry, logEl.firstChild);
+
+        // Limit log entries
+        while (logEl.children.length > 50) {
+          logEl.removeChild(logEl.lastChild);
+        }
+      }
+
+      // Drawing handlers - measure event.timeStamp to performance.now()
+      function handlePointerDown(e) {
+        isDrawing = true;
+        drawPoint(e);
+      }
+
+      function handlePointerMove(e) {
+        if (!isDrawing) return;
+
+        // Get coalesced events for accurate sampling
+        const events = e.getCoalescedEvents?.() ?? [e];
+        for (const evt of events) {
+          drawPoint(evt);
+        }
+      }
+
+      function handlePointerUp() {
+        isDrawing = false;
+      }
+
+      function drawPoint(e) {
+        // Measure latency: time from event timestamp to now
+        const latency = performance.now() - e.timeStamp;
+
+        // Only record positive latencies (event.timeStamp should be earlier)
+        if (latency >= 0) {
+          latencies.push(latency);
+          addLog(latency);
+          updateStats();
+        }
+
+        // Draw circle at position
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const size = e.pressure > 0 ? 10 * e.pressure : 5;
+
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Event listeners
+      canvas.addEventListener('pointerdown', handlePointerDown);
+      canvas.addEventListener('pointermove', handlePointerMove);
+      canvas.addEventListener('pointerup', handlePointerUp);
+      canvas.addEventListener('pointerleave', handlePointerUp);
+
+      // Controls
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      });
+
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        latencies = [];
+        avgLatencyEl.textContent = '--';
+        maxLatencyEl.textContent = '--';
+        sampleCountEl.textContent = '0';
+        logEl.innerHTML = '';
+      });
+    </script>
+  </body>
+</html>

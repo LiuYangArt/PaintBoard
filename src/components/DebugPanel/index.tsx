@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   Bug,
   Grid3X3,
@@ -68,6 +68,20 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
     lagometer: LagometerStats;
     queueDepth: number;
   } | null>(null);
+
+  // Environment detection for perf debugging
+  const envInfo = useMemo(() => {
+    const isTauri = '__TAURI_INTERNALS__' in window;
+    const ua = navigator.userAgent;
+    const isChrome = ua.includes('Chrome/') && !ua.includes('Edg/');
+    const isEdge = ua.includes('Edg/');
+    const isWebView2 = isTauri && isEdge;
+
+    return {
+      runtime: isTauri ? 'Tauri App' : 'Browser',
+      engine: isWebView2 ? 'WebView2' : isChrome ? 'Chrome' : isEdge ? 'Edge' : 'Other',
+    };
+  }, []);
 
   // Calculate panel style
   const panelStyle: React.CSSProperties = position
@@ -418,6 +432,18 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
                 <span className="stat-sub">
                   {benchmarkStats.queueDepth > 10 ? '⚠️ Backlog' : '✅ OK'}
                 </span>
+              </div>
+              <div
+                className="stat-row"
+                style={{
+                  marginTop: '8px',
+                  borderTop: '1px solid var(--border-color)',
+                  paddingTop: '8px',
+                }}
+              >
+                <span className="stat-label">Environment:</span>
+                <span className="stat-value">{envInfo.runtime}</span>
+                <span className="stat-sub">({envInfo.engine})</span>
               </div>
             </div>
           ) : (
