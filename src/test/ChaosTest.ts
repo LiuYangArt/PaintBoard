@@ -16,7 +16,7 @@ export interface ChaosTestResult {
 export interface ChaosTestOptions {
   /** Test duration in milliseconds */
   duration?: number;
-  /** Probability of stroke vs tap (0-1) */
+  /** Probability of stroke vs tap (0-1), set to 0 for clicks-only */
   strokeProbability?: number;
   /** Minimum interval between actions (ms) */
   minInterval?: number;
@@ -29,52 +29,11 @@ export interface ChaosTestOptions {
 /**
  * Run chaos clicking test - random taps at varying intervals
  */
-export async function chaosClicker(
+export function chaosClicker(
   canvas: HTMLCanvasElement,
   options: ChaosTestOptions = {}
 ): Promise<ChaosTestResult> {
-  const { duration = 5000, minInterval = 1, maxInterval = 50, onProgress } = options;
-
-  const simulator = new InputSimulator(canvas);
-  const startTime = performance.now();
-  let clicks = 0;
-  let errors = 0;
-  const errorMessages: string[] = [];
-
-  while (performance.now() - startTime < duration) {
-    try {
-      const x = Math.random() * canvas.width;
-      const y = Math.random() * canvas.height;
-      const pressure = 0.1 + Math.random() * 0.9;
-      const tapDuration = 1 + Math.random() * 20;
-      const interval = minInterval + Math.random() * (maxInterval - minInterval);
-
-      await simulator.tap(x, y, { pressure, durationMs: tapDuration });
-      await new Promise((r) => setTimeout(r, interval));
-      clicks++;
-
-      // Report progress
-      if (onProgress) {
-        const progress = (performance.now() - startTime) / duration;
-        onProgress(Math.min(progress, 1));
-      }
-    } catch (e) {
-      errors++;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (errorMessages.length < 10) {
-        errorMessages.push(msg);
-      }
-      console.error('Chaos test error:', e);
-    }
-  }
-
-  return {
-    duration: performance.now() - startTime,
-    clicks,
-    strokes: 0,
-    errors,
-    errorMessages,
-  };
+  return chaosMixed(canvas, { ...options, strokeProbability: 0 });
 }
 
 /**
@@ -101,50 +60,34 @@ export async function chaosMixed(
 
   while (performance.now() - startTime < duration) {
     try {
-      const isStroke = Math.random() < strokeProbability;
+      const isStroke = strokeProbability > 0 && Math.random() < strokeProbability;
 
       if (isStroke) {
-        // Random stroke
-        const start = {
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-        };
-        const end = {
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-        };
-        const steps = 5 + Math.floor(Math.random() * 20);
-
-        await simulator.drawStroke(start, end, {
-          pressure: 0.3 + Math.random() * 0.7,
-          steps,
-        });
+        await simulator.drawStroke(
+          { x: Math.random() * canvas.width, y: Math.random() * canvas.height },
+          { x: Math.random() * canvas.width, y: Math.random() * canvas.height },
+          { pressure: 0.3 + Math.random() * 0.7, steps: 5 + Math.floor(Math.random() * 20) }
+        );
         strokes++;
       } else {
-        // Random tap
-        const x = Math.random() * canvas.width;
-        const y = Math.random() * canvas.height;
-        const pressure = 0.1 + Math.random() * 0.9;
-
-        await simulator.tap(x, y, { pressure, durationMs: 1 + Math.random() * 10 });
+        await simulator.tap(Math.random() * canvas.width, Math.random() * canvas.height, {
+          pressure: 0.1 + Math.random() * 0.9,
+          durationMs: 1 + Math.random() * 10,
+        });
         clicks++;
       }
 
       const interval = minInterval + Math.random() * (maxInterval - minInterval);
       await new Promise((r) => setTimeout(r, interval));
 
-      // Report progress
       if (onProgress) {
-        const progress = (performance.now() - startTime) / duration;
-        onProgress(Math.min(progress, 1));
+        onProgress(Math.min((performance.now() - startTime) / duration, 1));
       }
     } catch (e) {
       errors++;
-      const msg = e instanceof Error ? e.message : String(e);
       if (errorMessages.length < 10) {
-        errorMessages.push(msg);
+        errorMessages.push(e instanceof Error ? e.message : String(e));
       }
-      console.error('Chaos test error:', e);
     }
   }
 
@@ -172,8 +115,7 @@ export function formatChaosReport(result: ChaosTestResult): string {
   ];
 
   if (result.errorMessages.length > 0) {
-    lines.push('');
-    lines.push('Error Messages:');
+    lines.push('', 'Error Messages:');
     result.errorMessages.forEach((msg, i) => {
       lines.push(`  ${i + 1}. ${msg}`);
     });

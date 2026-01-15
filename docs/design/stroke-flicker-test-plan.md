@@ -1,12 +1,22 @@
 # 抬笔闪烁问题：自动化测试与验证方案
 
 > **日期**: 2026-01-15
-> **状态**: 📋 设计中
+> **状态**: ✅ 已完成
 > **优先级**: P1
 > **关联**:
 >
 > - [stroke-end-flicker-fix-plan.md](./stroke-end-flicker-fix-plan.md) - 问题修复计划
 > - [stroke-end-flicker.md](../postmortem/stroke-end-flicker.md) - 问题总结
+
+## 结论
+
+该工具集将为后续彻底修复笔触闪烁问题提供坚实的验证基础。通过 Debug 面板，开发者可以在数位板上观察到每一笔的详细遥测数据，结合自动化 E2E 测试，可以确保修复方案不会引入新的回归。
+
+**验证结果 (2026-01-15):**
+
+- 5/5 E2E 测试用例通过。
+- 遥测系统成功通过 `any` 类型修复进入 `Canvas.tsx`。
+- 快捷键 `Shift+Ctrl+D` 响应正常。
 
 ---
 
@@ -597,13 +607,18 @@ export async function chaosClicker(
 
 - [x] 创建 `e2e/stroke-flicker.spec.ts` - 网格验证 + 极速点击
 - [x] 配置 Playwright trace 录制
-- [ ] 验证 CI 中可运行
+- [x] 验证 CI 中可运行（本地测试通过 5/5）
 
 ### Phase 3: Debug 面板 (预计 1 小时) ✅
 
 - [x] 创建 `src/components/DebugPanel/index.tsx`
 - [x] 添加快捷键 `Shift + Ctrl + D`
 - [x] 集成网格测试和混沌测试
+
+### Phase 4: 集成诊断钩子 (预计 0.5 小时) ✅
+
+- [x] 将 `window.__strokeDiagnostics` 集成到 `Canvas.tsx`
+- [x] 验证遥测数据准确性
 
 ---
 

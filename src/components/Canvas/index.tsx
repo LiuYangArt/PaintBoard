@@ -12,6 +12,18 @@ import { useCursor } from './useCursor';
 import { useBrushRenderer, BrushRenderConfig } from './useBrushRenderer';
 import { getEffectiveInputData } from './inputUtils';
 
+declare global {
+  interface Window {
+    __strokeDiagnostics?: {
+      onStrokeStart: () => void;
+      onStateChange: (state: string) => void;
+      onPointBuffered: () => void;
+      onPointDropped: () => void;
+      onStrokeEnd: () => void;
+    };
+  }
+}
+
 export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -696,6 +708,7 @@ export function Canvas() {
 
     isDrawingRef.current = false;
     strokeStateRef.current = 'idle'; // Reset state machine
+    window.__strokeDiagnostics?.onStrokeEnd();
   }, [
     currentTool,
     getActiveLayerCtx,
@@ -745,11 +758,13 @@ export function Canvas() {
 
       // Transition to 'active' state
       strokeStateRef.current = 'active';
+      window.__strokeDiagnostics?.onStateChange('active');
 
       // Replay all buffered points
       const points = pendingPointsRef.current;
       for (const p of points) {
         processBrushPointWithConfig(p.x, p.y, p.pressure);
+        window.__strokeDiagnostics?.onPointBuffered();
       }
       pendingPointsRef.current = [];
 
@@ -827,6 +842,7 @@ export function Canvas() {
         pendingEndRef.current = false;
 
         // Start initialization (fire-and-forget)
+        window.__strokeDiagnostics?.onStrokeStart();
         void initializeBrushStroke();
         return;
       }
@@ -934,9 +950,11 @@ export function Canvas() {
           if (state === 'starting') {
             // Buffer points during 'starting' phase, replay after beginStroke completes
             pendingPointsRef.current.push({ x: canvasX, y: canvasY, pressure });
+            window.__strokeDiagnostics?.onPointBuffered(); // Telemetry: Buffered point
           } else if (state === 'active') {
             // Normal processing in 'active' phase
             processBrushPointWithConfig(canvasX, canvasY, pressure);
+            window.__strokeDiagnostics?.onPointBuffered(); // Telemetry: Processed point
           }
           // Ignore in 'idle' or 'finishing' state
           continue;

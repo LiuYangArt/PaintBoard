@@ -10,9 +10,17 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { InputSimulator, verifyGrid, formatVerificationReport } from '../../test';
-import { chaosMixed, formatChaosReport, type ChaosTestResult } from '../../test';
-import { installDiagnosticHooks, getTestReport, type DiagnosticHooks } from '../../test';
+import {
+  InputSimulator,
+  verifyGrid,
+  formatVerificationReport,
+  chaosMixed,
+  formatChaosReport,
+  installDiagnosticHooks,
+  getTestReport,
+  type ChaosTestResult,
+  type DiagnosticHooks,
+} from '../../test';
 import './DebugPanel.css';
 
 interface DebugPanelProps {
@@ -35,149 +43,100 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
   const [progress, setProgress] = useState(0);
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
   const diagnosticsRef = useRef<DiagnosticHooks | null>(null);
-  const abortRef = useRef(false);
 
-  // Install diagnostics on mount
   useEffect(() => {
     diagnosticsRef.current = installDiagnosticHooks();
-    return () => {
-      diagnosticsRef.current?.cleanup();
-    };
+    return () => diagnosticsRef.current?.cleanup();
   }, []);
 
   const addResult = useCallback((name: string, status: TestStatus, report?: string) => {
-    setResults((prev: TestResult[]) => [
-      { name, status, report, timestamp: new Date() },
-      ...prev.slice(0, 9), // Keep last 10 results
-    ]);
+    setResults((prev) => [{ name, status, report, timestamp: new Date() }, ...prev.slice(0, 9)]);
   }, []);
 
-  // Grid Test (10x10)
-  const runGridTest = useCallback(async () => {
-    if (!canvas || runningTest) return;
+  /**
+   * Run a test with common setup/teardown logic
+   */
+  const runTest = useCallback(
+    async (
+      testId: string,
+      testName: string,
+      testFn: () => Promise<{ passed: boolean; report: string }>
+    ) => {
+      if (!canvas || runningTest) return;
 
-    setRunningTest('grid');
-    setProgress(0);
-    addResult('Grid Test (10x10)', 'running');
-    diagnosticsRef.current?.reset();
+      setRunningTest(testId);
+      setProgress(0);
+      addResult(testName, 'running');
+      diagnosticsRef.current?.reset();
 
-    try {
-      const simulator = new InputSimulator(canvas);
+      try {
+        const { passed, report } = await testFn();
+        const telemetry = diagnosticsRef.current ? getTestReport(diagnosticsRef.current) : '';
+        const fullReport = report + (telemetry ? '\n\n' + telemetry : '');
+        addResult(testName, passed ? 'passed' : 'failed', fullReport);
+      } catch (e) {
+        addResult(testName, 'failed', String(e));
+      } finally {
+        setRunningTest(null);
+        setProgress(0);
+      }
+    },
+    [canvas, runningTest, addResult]
+  );
+
+  const runGridTest = useCallback(() => {
+    return runTest('grid', 'Grid Test (10x10)', async () => {
+      const simulator = new InputSimulator(canvas!);
       const points = await simulator.drawGrid(10, 10, 30, {
         startX: 50,
         startY: 50,
         intervalMs: 20,
       });
+      await new Promise((r) => setTimeout(r, 500));
 
-      // Wait for rendering
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const result = await verifyGrid(canvas!, points);
+      return { passed: result.passed, report: formatVerificationReport(result) };
+    });
+  }, [canvas, runTest]);
 
-      // Verify
-      const verification = await verifyGrid(canvas, points);
-      const telemetryReport = diagnosticsRef.current ? getTestReport(diagnosticsRef.current) : '';
-
-      const fullReport = formatVerificationReport(verification) + '\n\n' + telemetryReport;
-
-      addResult('Grid Test (10x10)', verification.passed ? 'passed' : 'failed', fullReport);
-    } catch (e) {
-      addResult('Grid Test (10x10)', 'failed', String(e));
-    } finally {
-      setRunningTest(null);
-      setProgress(0);
-    }
-  }, [canvas, runningTest, addResult]);
-
-  // Rapid Taps Test
-  const runRapidTapsTest = useCallback(async () => {
-    if (!canvas || runningTest) return;
-
-    setRunningTest('rapid');
-    setProgress(0);
-    addResult('Rapid Taps (100x)', 'running');
-    diagnosticsRef.current?.reset();
-
-    try {
-      const simulator = new InputSimulator(canvas);
+  const runRapidTapsTest = useCallback(() => {
+    return runTest('rapid', 'Rapid Taps (100x)', async () => {
+      const simulator = new InputSimulator(canvas!);
       const points = await simulator.rapidTaps(
         100,
-        {
-          x: 50,
-          y: 50,
-          width: canvas.width - 100,
-          height: canvas.height - 100,
-        },
+        { x: 50, y: 50, width: canvas!.width - 100, height: canvas!.height - 100 },
         5
       );
+      await new Promise((r) => setTimeout(r, 500));
 
-      // Wait for rendering
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      const result = await verifyGrid(canvas!, points, { sampleRadius: 5 });
+      return {
+        passed: result.passed,
+        report: `Taps: ${points.length}\n${formatVerificationReport(result)}`,
+      };
+    });
+  }, [canvas, runTest]);
 
-      // Verify
-      const verification = await verifyGrid(canvas, points, { sampleRadius: 5 });
-      const telemetryReport = diagnosticsRef.current ? getTestReport(diagnosticsRef.current) : '';
-
-      const fullReport =
-        `Taps: ${points.length}\n` +
-        formatVerificationReport(verification) +
-        '\n\n' +
-        telemetryReport;
-
-      addResult('Rapid Taps (100x)', verification.passed ? 'passed' : 'failed', fullReport);
-    } catch (e) {
-      addResult('Rapid Taps (100x)', 'failed', String(e));
-    } finally {
-      setRunningTest(null);
-      setProgress(0);
-    }
-  }, [canvas, runningTest, addResult]);
-
-  // Chaos Test
-  const runChaosTest = useCallback(async () => {
-    if (!canvas || runningTest) return;
-
-    setRunningTest('chaos');
-    setProgress(0);
-    abortRef.current = false;
-    addResult('Chaos Test (5s)', 'running');
-    diagnosticsRef.current?.reset();
-
-    try {
-      const result: ChaosTestResult = await chaosMixed(canvas, {
+  const runChaosTest = useCallback(() => {
+    return runTest('chaos', 'Chaos Test (5s)', async () => {
+      const result: ChaosTestResult = await chaosMixed(canvas!, {
         duration: 5000,
         strokeProbability: 0.3,
-        onProgress: (p: number) => setProgress(p),
+        onProgress: setProgress,
       });
+      return { passed: result.errors === 0, report: formatChaosReport(result) };
+    });
+  }, [canvas, runTest]);
 
-      const telemetryReport = diagnosticsRef.current ? getTestReport(diagnosticsRef.current) : '';
-
-      const fullReport = formatChaosReport(result) + '\n\n' + telemetryReport;
-
-      addResult('Chaos Test (5s)', result.errors === 0 ? 'passed' : 'failed', fullReport);
-    } catch (e) {
-      addResult('Chaos Test (5s)', 'failed', String(e));
-    } finally {
-      setRunningTest(null);
-      setProgress(0);
-    }
-  }, [canvas, runningTest, addResult]);
-
-  // Clear Canvas
   const clearCanvas = useCallback(() => {
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
     diagnosticsRef.current?.reset();
   }, [canvas]);
 
-  // Export Results
   const exportResults = useCallback(() => {
     const content = results
-      .map(
-        (r: TestResult) =>
-          `[${r.timestamp.toISOString()}] ${r.name}: ${r.status}\n${r.report || ''}`
-      )
+      .map((r) => `[${r.timestamp.toISOString()}] ${r.name}: ${r.status}\n${r.report || ''}`)
       .join('\n\n---\n\n');
 
     const blob = new Blob([content], { type: 'text/plain' });
@@ -189,7 +148,7 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
     URL.revokeObjectURL(url);
   }, [results]);
 
-  const getStatusIcon = (status: TestStatus) => {
+  function getStatusIcon(status: TestStatus) {
     switch (status) {
       case 'running':
         return <span className="status-icon running">⏳</span>;
@@ -200,7 +159,7 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
       default:
         return null;
     }
-  };
+  }
 
   return (
     <div className="debug-panel">
@@ -215,7 +174,6 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
       </div>
 
       <div className="debug-panel-content">
-        {/* Test Buttons */}
         <div className="debug-section">
           <h3>Stroke Tests</h3>
           <div className="debug-button-grid">
@@ -251,7 +209,6 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
           </div>
         </div>
 
-        {/* Progress Bar */}
         {runningTest && (
           <div className="debug-progress">
             <div className="debug-progress-label">
@@ -264,7 +221,6 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
           </div>
         )}
 
-        {/* Actions */}
         <div className="debug-section">
           <h3>Actions</h3>
           <div className="debug-button-row">
@@ -290,12 +246,11 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
           </div>
         </div>
 
-        {/* Results */}
         {results.length > 0 && (
           <div className="debug-section">
             <h3>Results</h3>
             <div className="debug-results">
-              {results.map((result: TestResult, index: number) => (
+              {results.map((result, index) => (
                 <div
                   key={index}
                   className={`debug-result ${result.status}`}

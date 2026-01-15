@@ -28,7 +28,6 @@ export interface Point {
 
 /**
  * Simulates pointer events for automated testing
- * Aligned with requestAnimationFrame to mimic real user input
  */
 export class InputSimulator {
   private canvas: HTMLCanvasElement;
@@ -43,39 +42,15 @@ export class InputSimulator {
    */
   async tap(x: number, y: number, options: TapOptions = {}): Promise<void> {
     const { pressure = 0.5, durationMs = 10, pointerType = 'pen' } = options;
+    const { clientX, clientY } = this.toClientCoords(x, y);
 
-    const rect = this.canvas.getBoundingClientRect();
-    const clientX = rect.left + x;
-    const clientY = rect.top + y;
-
-    this.canvas.dispatchEvent(
-      new PointerEvent('pointerdown', {
-        pointerId: this.pointerId,
-        bubbles: true,
-        clientX,
-        clientY,
-        pressure,
-        pointerType,
-      })
-    );
-
+    this.dispatchPointer('pointerdown', clientX, clientY, pressure, pointerType);
     await this.waitFrame(durationMs);
-
-    this.canvas.dispatchEvent(
-      new PointerEvent('pointerup', {
-        pointerId: this.pointerId,
-        bubbles: true,
-        clientX,
-        clientY,
-        pressure: 0,
-        pointerType,
-      })
-    );
+    this.dispatchPointer('pointerup', clientX, clientY, 0, pointerType);
   }
 
   /**
    * Draw a grid of taps for deterministic verification
-   * @returns Array of expected tap positions (canvas coordinates)
    */
   async drawGrid(
     rows: number,
@@ -107,20 +82,14 @@ export class InputSimulator {
     const { pressure = 0.5, steps = 20, pointerType = 'pen' } = options;
     const points: Point[] = [];
 
-    const rect = this.canvas.getBoundingClientRect();
-    const startClientX = rect.left + start.x;
-    const startClientY = rect.top + start.y;
-
     // Pointer down
-    this.canvas.dispatchEvent(
-      new PointerEvent('pointerdown', {
-        pointerId: this.pointerId,
-        bubbles: true,
-        clientX: startClientX,
-        clientY: startClientY,
-        pressure,
-        pointerType,
-      })
+    const startCoords = this.toClientCoords(start.x, start.y);
+    this.dispatchPointer(
+      'pointerdown',
+      startCoords.clientX,
+      startCoords.clientY,
+      pressure,
+      pointerType
     );
     points.push({ x: start.x, y: start.y });
 
@@ -129,21 +98,16 @@ export class InputSimulator {
       const t = i / steps;
       const x = start.x + (end.x - start.x) * t;
       const y = start.y + (end.y - start.y) * t;
-      const clientX = rect.left + x;
-      const clientY = rect.top + y;
+      const coords = this.toClientCoords(x, y);
 
       // Pressure curve: builds up and fades at the end
       const stepPressure = pressure * Math.sin(t * Math.PI);
-
-      this.canvas.dispatchEvent(
-        new PointerEvent('pointermove', {
-          pointerId: this.pointerId,
-          bubbles: true,
-          clientX,
-          clientY,
-          pressure: stepPressure,
-          pointerType,
-        })
+      this.dispatchPointer(
+        'pointermove',
+        coords.clientX,
+        coords.clientY,
+        stepPressure,
+        pointerType
       );
       points.push({ x, y });
 
@@ -151,18 +115,8 @@ export class InputSimulator {
     }
 
     // Pointer up
-    const endClientX = rect.left + end.x;
-    const endClientY = rect.top + end.y;
-    this.canvas.dispatchEvent(
-      new PointerEvent('pointerup', {
-        pointerId: this.pointerId,
-        bubbles: true,
-        clientX: endClientX,
-        clientY: endClientY,
-        pressure: 0,
-        pointerType,
-      })
-    );
+    const endCoords = this.toClientCoords(end.x, end.y);
+    this.dispatchPointer('pointerup', endCoords.clientX, endCoords.clientY, 0, pointerType);
 
     return points;
   }
@@ -188,6 +142,39 @@ export class InputSimulator {
     }
 
     return points;
+  }
+
+  /**
+   * Convert canvas coordinates to client coordinates
+   */
+  private toClientCoords(x: number, y: number): { clientX: number; clientY: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      clientX: rect.left + x,
+      clientY: rect.top + y,
+    };
+  }
+
+  /**
+   * Dispatch a pointer event
+   */
+  private dispatchPointer(
+    type: string,
+    clientX: number,
+    clientY: number,
+    pressure: number,
+    pointerType: string
+  ): void {
+    this.canvas.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: this.pointerId,
+        bubbles: true,
+        clientX,
+        clientY,
+        pressure,
+        pointerType,
+      })
+    );
   }
 
   /**
