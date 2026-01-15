@@ -9,6 +9,7 @@ import {
   Download,
   ChevronDown,
   ChevronUp,
+  Timer,
 } from 'lucide-react';
 import {
   InputSimulator,
@@ -22,6 +23,12 @@ import {
   type DiagnosticHooks,
 } from '../../test';
 import { LatencyProfilerStats, FrameStats, LagometerStats } from '@/benchmark/types';
+import {
+  BenchmarkRunner,
+  DEFAULT_SCENARIOS,
+  downloadBenchmarkReport,
+  type BenchmarkReport,
+} from '@/benchmark';
 import './DebugPanel.css';
 
 interface DebugPanelProps {
@@ -172,21 +179,90 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
     if (!canvas) return;
     canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
     diagnosticsRef.current?.reset();
+    // Also reset benchmark stats
+    const bench = (
+      window as unknown as {
+        __benchmark?: {
+          latencyProfiler: { reset: () => void };
+          lagometer: { reset: () => void };
+        };
+      }
+    ).__benchmark;
+    bench?.latencyProfiler.reset();
+    bench?.lagometer.reset();
   }, [canvas]);
 
-  const exportResults = useCallback(() => {
-    const content = results
-      .map((r) => `[${r.timestamp.toISOString()}] ${r.name}: ${r.status}\n${r.report || ''}`)
-      .join('\n\n---\n\n');
+  // Benchmark report state
+  const [lastReport, setLastReport] = useState<BenchmarkReport | null>(null);
 
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `debug-report-${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [results]);
+  const runBenchmark = useCallback(async () => {
+    if (!canvas || runningTest) return;
+
+    setRunningTest('benchmark');
+    setProgress(0);
+    addResult('Benchmark Suite', 'running');
+
+    const bench = (
+      window as unknown as {
+        __benchmark?: {
+          latencyProfiler: { reset: () => void; getStats: () => LatencyProfilerStats };
+          fpsCounter: { getStats: () => FrameStats };
+          lagometer: { reset: () => void; getStats: () => LagometerStats };
+        };
+      }
+    ).__benchmark;
+
+    if (!bench) {
+      addResult('Benchmark Suite', 'failed', 'Benchmark not initialized');
+      setRunningTest(null);
+      return;
+    }
+
+    try {
+      const runner = new BenchmarkRunner(canvas);
+      runner.setProgressCallback((p, name) => {
+        setProgress(p);
+        if (name !== 'Complete') {
+          setRunningTest(`benchmark: ${name}`);
+        }
+      });
+
+      const report = await runner.runScenarios(DEFAULT_SCENARIOS, {
+        latencyProfiler: bench.latencyProfiler,
+        fpsCounter: bench.fpsCounter,
+        lagometer: bench.lagometer,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      setLastReport(report);
+
+      const summary = `Avg FPS: ${report.summary.avgFps.toFixed(1)}\nAvg Latency: ${report.summary.avgRenderLatency.toFixed(2)}ms\nMax Lag: ${report.summary.maxVisualLag.toFixed(1)}px`;
+      addResult('Benchmark Suite', 'passed', summary);
+    } catch (e) {
+      addResult('Benchmark Suite', 'failed', String(e));
+    } finally {
+      setRunningTest(null);
+      setProgress(0);
+    }
+  }, [canvas, runningTest, addResult]);
+
+  const exportReport = useCallback(() => {
+    if (lastReport) {
+      downloadBenchmarkReport(lastReport);
+    } else if (results.length > 0) {
+      // Fallback to test results export
+      const content = results
+        .map((r) => `[${r.timestamp.toISOString()}] ${r.name}: ${r.status}\n${r.report || ''}`)
+        .join('\n\n---\n\n');
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `debug-report-${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, [lastReport, results]);
 
   function getStatusIcon(status: TestStatus) {
     switch (status) {
@@ -361,10 +437,21 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
           <h3>Actions</h3>
           <div className="debug-button-row">
             <button
+              className="debug-btn"
+              onClick={runBenchmark}
+              disabled={!!runningTest}
+              title="Run automated benchmark with different brush sizes"
+            >
+              <Timer size={16} />
+              <span>Run Benchmark</span>
+            </button>
+          </div>
+          <div className="debug-button-row" style={{ marginTop: '8px' }}>
+            <button
               className="debug-btn secondary"
               onClick={clearCanvas}
               disabled={!!runningTest}
-              title="Clear the canvas"
+              title="Clear canvas and reset stats"
             >
               <RotateCcw size={16} />
               <span>Clear</span>
@@ -372,9 +459,9 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
 
             <button
               className="debug-btn secondary"
-              onClick={exportResults}
-              disabled={results.length === 0}
-              title="Export test results"
+              onClick={exportReport}
+              disabled={!lastReport && results.length === 0}
+              title="Export benchmark report"
             >
               <Download size={16} />
               <span>Export</span>
