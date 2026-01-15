@@ -426,6 +426,10 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
                 <span className="stat-value">
                   {benchmarkStats.lagometer.maxLagDistance.toFixed(1)}px
                 </span>
+                <span className="stat-sub">
+                  ({benchmarkStats.lagometer.lagAsScreenPercent.toFixed(1)}%,{' '}
+                  {benchmarkStats.lagometer.lagAsBrushRadii.toFixed(1)}x)
+                </span>
               </div>
             </div>
           ) : (
