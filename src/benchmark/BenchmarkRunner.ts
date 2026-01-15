@@ -206,6 +206,9 @@ export function downloadBenchmarkReport(report: BenchmarkReport): void {
   const a = document.createElement('a');
   a.href = url;
   a.download = `benchmark-${new Date().toISOString().split('T')[0]}.json`;
+  // Must append to DOM for Tauri/some browsers
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }

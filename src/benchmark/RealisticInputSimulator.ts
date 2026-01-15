@@ -19,7 +19,15 @@ export class RealisticInputSimulator {
     const points = this.interpolatePoints(from, to, steps);
     const startTime = performance.now();
 
-    for (let i = 0; i < points.length; i++) {
+    // Start stroke with pointerdown
+    const firstPt = points[0];
+    if (firstPt) {
+      const pressure = firstPt.pressure ?? 0.5;
+      this.dispatchPointerEvent(firstPt.x, firstPt.y, pressure, 'pointerdown');
+      await new Promise((r) => setTimeout(r, 16)); // Wait for stroke init
+    }
+
+    for (let i = 1; i < points.length; i++) {
       // 1. Dispatch Event
       const pt = points[i]!;
       const finalPoint = options.jitter ? this.applyJitter(pt) : pt;
@@ -28,7 +36,7 @@ export class RealisticInputSimulator {
         finalPoint.pressure ??
         (options.pressureNoise ? 0.5 + (Math.random() - 0.5) * options.pressureNoise : 0.5);
 
-      this.dispatchPointerEvent(finalPoint.x, finalPoint.y, pressure);
+      this.dispatchPointerEvent(finalPoint.x, finalPoint.y, pressure, 'pointermove');
 
       // 2. Calculate next expected time
       const nextExpectedTime = startTime + (i + 1) * interval;
@@ -43,12 +51,14 @@ export class RealisticInputSimulator {
       }
     }
 
-    // Dispatch PointerUp at end?
-    // Usually a stroke ends with lift.
+    // Dispatch PointerUp at end
     const lastPt = points[points.length - 1];
     if (lastPt) {
       this.dispatchPointerEvent(lastPt.x, lastPt.y, 0, 'pointerup');
     }
+
+    // Wait for stroke to complete
+    await new Promise((r) => setTimeout(r, 100));
   }
 
   private interpolatePoints(from: Point, to: Point, steps: number): Point[] {
