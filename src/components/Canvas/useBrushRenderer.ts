@@ -202,13 +202,25 @@ export function useBrushRenderer({
   /**
    * End stroke and composite to layer
    * Returns a Promise that resolves when compositing is complete
+   *
+   * For GPU backend, uses atomic transaction pattern:
+   * 1. Async: prepareEndStroke() - flush dabs, wait for GPU/preview ready
+   * 2. Sync: compositeToLayer() + clear() - in same JS task to prevent flicker
    */
   const endStroke = useCallback(
     async (layerCtx: CanvasRenderingContext2D): Promise<void> => {
       stamperRef.current.finishStroke(0);
 
       if (backend === 'gpu' && gpuBufferRef.current) {
-        await gpuBufferRef.current.endStroke(layerCtx, 1.0);
+        const gpuBuffer = gpuBufferRef.current;
+
+        // 1. Async: wait for GPU and preview to be ready
+        await gpuBuffer.prepareEndStroke();
+
+        // 2. Sync atomic transaction: composite + clear in same JS task
+        // This prevents browser paint between composite and clear (no flicker)
+        gpuBuffer.compositeToLayer(layerCtx, 1.0);
+        gpuBuffer.clear();
       } else if (cpuBufferRef.current) {
         cpuBufferRef.current.endStroke(layerCtx, 1.0);
       }
