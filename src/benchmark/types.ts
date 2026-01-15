@@ -59,6 +59,7 @@ declare global {
         getStats: () => LagometerStats;
         reset: () => void;
       };
+      getQueueDepth?: () => number; // Queue depth monitoring
       resetForScenario?: () => void;
     };
   }
