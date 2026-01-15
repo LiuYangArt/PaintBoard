@@ -72,9 +72,10 @@ export class LatencyProfiler {
     return this.measurements;
   }
 
-  // Sampling strategy: every N points
+  // Sampling strategy: every N points, skip cold start
   shouldSampleGpu(pointIndex: number): boolean {
-    return pointIndex % this.sampleInterval === 0;
+    // Skip first 100 points to avoid cold start GPU delays
+    return pointIndex >= 100 && pointIndex % this.sampleInterval === 0;
   }
 
   // Get statistics

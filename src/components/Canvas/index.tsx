@@ -41,6 +41,7 @@ export function Canvas() {
   const fpsCounterRef = useRef<FPSCounter>(new FPSCounter());
   const lagometerRef = useRef<LagometerMonitor>(new LagometerMonitor());
   const lastInputPosRef = useRef<{ x: number; y: number } | null>(null);
+  const prevProcessedPosRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     latencyProfilerRef.current.enable();
@@ -658,12 +659,18 @@ export function Canvas() {
       // Lagometer: Update last input position and measure lag
       lastInputPosRef.current = { x, y };
       lagometerRef.current.setBrushRadius(config.size / 2);
-      // The "brush position" is the current input point since we draw synchronously
-      // Real lag would need comparison with previous frame's rendered position
-      // For now, we measure against the stamper's last position if available
-      // This is a simplified implementation - in practice you'd compare against actual rendered position
+
+      // Measure visual lag: distance between current input and previous processed point
+      // This reflects input sampling density and any buffering delays
+      if (prevProcessedPosRef.current) {
+        lagometerRef.current.measure(prevProcessedPosRef.current, { x, y });
+      }
 
       processBrushPoint(x, y, pressure, config, pointIndex);
+
+      // Update previous processed position for next measurement
+      prevProcessedPosRef.current = { x, y };
+
       // Render stroke buffer preview to display canvas
       compositeAndRenderWithPreview();
     },
