@@ -25,7 +25,7 @@ export interface Anomaly {
 
 export interface DiagnosticAPI {
   onStrokeStart: () => void;
-  onStateChange: (newState: StrokeState) => void;
+  onStateChange: (newState: string) => void;
   onPointBuffered: () => void;
   onPointDropped: () => void;
   onStrokeEnd: () => void;
@@ -65,12 +65,12 @@ export function installDiagnosticHooks(): DiagnosticHooks {
       hooks.strokes.push(stroke);
     },
 
-    onStateChange(newState: StrokeState) {
+    onStateChange(newState: string) {
       if (!hooks.currentStroke) return;
 
       const stroke = hooks.currentStroke;
       const prevState = stroke.state;
-      stroke.state = newState;
+      stroke.state = newState as StrokeState;
 
       // Detect anomaly: 'starting' state took too long
       if (prevState === 'starting' && newState === 'active') {
