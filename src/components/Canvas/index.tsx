@@ -30,24 +30,18 @@ export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const isDrawingRef = useRef(false);
 
-  // Benchmark
+  // Benchmark refs
   const pointIndexRef = useRef(0);
   const latencyProfilerRef = useRef<LatencyProfiler>(new LatencyProfiler());
   const fpsCounterRef = useRef<FPSCounter>(new FPSCounter());
   const lagometerRef = useRef<LagometerMonitor>(new LagometerMonitor());
-  // Visual Lag tracking: input position vs rendered position
-  const lastInputPosRef = useRef<{ x: number; y: number } | null>(null);
   const lastRenderedPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Performance optimization: Input queue for batch processing
-  // Points are queued here and processed in RAF loop, avoiding per-point composite
   type QueuedPoint = { x: number; y: number; pressure: number; pointIndex: number };
   const inputQueueRef = useRef<QueuedPoint[]>([]);
-  const MAX_POINTS_PER_FRAME = 2000; // Soft limit to prevent single-frame freeze
-  const needsRenderRef = useRef(false); // Flag: queue was processed, need composite
-
-  // RAF loop now handles both FPS counting and batch point processing
-  // This is set up later after compositeAndRenderWithPreview is defined
+  const MAX_POINTS_PER_FRAME = 2000;
+  const needsRenderRef = useRef(false);
 
   // Expose for debug panel (including getQueueDepth for performance monitoring)
   useEffect(() => {
@@ -61,7 +55,6 @@ export function Canvas() {
       resetForScenario: () => {
         pointIndexRef.current = 0;
         lastRenderedPosRef.current = null;
-        lastInputPosRef.current = null;
         inputQueueRef.current = [];
       },
     };
@@ -827,8 +820,6 @@ export function Canvas() {
 
     isDrawingRef.current = false;
     strokeStateRef.current = 'idle';
-    // Reset position tracking to avoid cross-stroke lag measurements
-    lastInputPosRef.current = null;
     lastRenderedPosRef.current = null;
     window.__strokeDiagnostics?.onStrokeEnd();
   }, [
@@ -1082,11 +1073,8 @@ export function Canvas() {
             pendingPointsRef.current.push({ x: canvasX, y: canvasY, pressure, pointIndex: idx });
             window.__strokeDiagnostics?.onPointBuffered(); // Telemetry: Buffered point
           } else if (state === 'active') {
-            // Queue point for batch processing in RAF loop (performance optimization)
             inputQueueRef.current.push({ x: canvasX, y: canvasY, pressure, pointIndex: idx });
-            // Track latest input position for Visual Lag measurement
-            lastInputPosRef.current = { x: canvasX, y: canvasY };
-            window.__strokeDiagnostics?.onPointBuffered(); // Telemetry: Queued point
+            window.__strokeDiagnostics?.onPointBuffered();
           }
           // Ignore in 'idle' or 'finishing' state
           continue;

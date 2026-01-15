@@ -1,4 +1,4 @@
-w# Visual Lag 测量逻辑修复
+# Visual Lag 测量逻辑修复
 
 **日期**: 2026-01-15
 **问题**: Visual Lag 显示 1543.6px，远超预期
