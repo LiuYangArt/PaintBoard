@@ -38,34 +38,30 @@ export function Canvas() {
   const lastInputPosRef = useRef<{ x: number; y: number } | null>(null);
   const prevProcessedPosRef = useRef<{ x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    latencyProfilerRef.current.enable();
-    const fpsCounter = fpsCounterRef.current;
-    fpsCounter.start();
+  // Performance optimization: Input queue for batch processing
+  // Points are queued here and processed in RAF loop, avoiding per-point composite
+  type QueuedPoint = { x: number; y: number; pressure: number; pointIndex: number };
+  const inputQueueRef = useRef<QueuedPoint[]>([]);
+  const MAX_POINTS_PER_FRAME = 2000; // Soft limit to prevent single-frame freeze
+  const needsRenderRef = useRef(false); // Flag: queue was processed, need composite
 
-    let id: number;
-    const loop = () => {
-      fpsCounter.tick();
-      id = requestAnimationFrame(loop);
-    };
-    id = requestAnimationFrame(loop);
-    return () => {
-      fpsCounter.stop();
-      cancelAnimationFrame(id);
-    };
-  }, []);
+  // RAF loop now handles both FPS counting and batch point processing
+  // This is set up later after compositeAndRenderWithPreview is defined
 
-  // Expose for debug panel
+  // Expose for debug panel (including getQueueDepth for performance monitoring)
   useEffect(() => {
     window.__benchmark = {
       latencyProfiler: latencyProfilerRef.current,
       fpsCounter: fpsCounterRef.current,
       lagometer: lagometerRef.current,
+      // Queue depth monitoring for performance diagnosis
+      getQueueDepth: () => inputQueueRef.current.length,
       // Reset function for benchmark runner
       resetForScenario: () => {
         pointIndexRef.current = 0;
         prevProcessedPosRef.current = null;
         lastInputPosRef.current = null;
+        inputQueueRef.current = [];
       },
     };
   }, []);
@@ -652,8 +648,9 @@ export function Canvas() {
     ctx.drawImage(compositeCanvas, 0, 0);
   }, [width, height, isStrokeActive, getPreviewCanvas, getPreviewOpacity, activeLayerId]);
 
-  // Process a single point through the brush renderer (for brush tool)
-  const processBrushPointWithConfig = useCallback(
+  // Process a single point through the brush renderer WITHOUT triggering composite
+  // Used by batch processing loop in RAF
+  const processSinglePoint = useCallback(
     (x: number, y: number, pressure: number, pointIndex?: number) => {
       const config = getBrushConfig();
 
@@ -662,7 +659,6 @@ export function Canvas() {
       lagometerRef.current.setBrushRadius(config.size / 2);
 
       // Measure visual lag: distance between current input and previous processed point
-      // This reflects input sampling density and any buffering delays
       if (prevProcessedPosRef.current) {
         lagometerRef.current.measure(prevProcessedPosRef.current, { x, y });
       }
@@ -671,12 +667,66 @@ export function Canvas() {
 
       // Update previous processed position for next measurement
       prevProcessedPosRef.current = { x, y };
-
-      // Render stroke buffer preview to display canvas
-      compositeAndRenderWithPreview();
     },
-    [getBrushConfig, processBrushPoint, compositeAndRenderWithPreview]
+    [getBrushConfig, processBrushPoint]
   );
+
+  // Process a single point AND trigger composite (legacy behavior, used during state machine replay)
+  const processBrushPointWithConfig = useCallback(
+    (x: number, y: number, pressure: number, pointIndex?: number) => {
+      processSinglePoint(x, y, pressure, pointIndex);
+      // Mark that we need to render after processing
+      needsRenderRef.current = true;
+    },
+    [processSinglePoint]
+  );
+
+  // RAF loop: Batch process queued points and composite once per frame
+  useEffect(() => {
+    latencyProfilerRef.current.enable();
+    const fpsCounter = fpsCounterRef.current;
+    fpsCounter.start();
+
+    let id: number;
+    const loop = () => {
+      fpsCounter.tick();
+
+      // Batch process all queued points (with soft limit)
+      const queue = inputQueueRef.current;
+      if (queue.length > 0) {
+        const count = Math.min(queue.length, MAX_POINTS_PER_FRAME);
+
+        // Drain and process points
+        for (let i = 0; i < count; i++) {
+          const p = queue[i]!;
+          processSinglePoint(p.x, p.y, p.pressure, p.pointIndex);
+        }
+
+        // Remove processed points from queue
+        if (count === queue.length) {
+          inputQueueRef.current = [];
+        } else {
+          inputQueueRef.current = queue.slice(count);
+        }
+
+        needsRenderRef.current = true;
+      }
+
+      // Composite once per frame if needed
+      if (needsRenderRef.current) {
+        compositeAndRenderWithPreview();
+        needsRenderRef.current = false;
+      }
+
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+
+    return () => {
+      fpsCounter.stop();
+      cancelAnimationFrame(id);
+    };
+  }, [compositeAndRenderWithPreview, processSinglePoint]);
 
   // 绘制插值后的点序列 (used for eraser, legacy fallback)
   const drawPoints = useCallback(
@@ -751,6 +801,15 @@ export function Canvas() {
 
     // For brush tool, composite stroke buffer to layer with opacity ceiling
     if (currentTool === 'brush') {
+      // Process any remaining points in queue before finalizing
+      const remainingQueue = inputQueueRef.current;
+      if (remainingQueue.length > 0) {
+        for (const p of remainingQueue) {
+          processSinglePoint(p.x, p.y, p.pressure, p.pointIndex);
+        }
+        inputQueueRef.current = [];
+      }
+
       const layerCtx = getActiveLayerCtx();
       if (layerCtx) {
         await endBrushStroke(layerCtx);
@@ -782,6 +841,7 @@ export function Canvas() {
     saveStrokeToHistory,
     activeLayerId,
     updateThumbnail,
+    processSinglePoint,
   ]);
 
   // Finish the current stroke properly (used by PointerUp and Alt key)
@@ -1023,9 +1083,9 @@ export function Canvas() {
             pendingPointsRef.current.push({ x: canvasX, y: canvasY, pressure, pointIndex: idx });
             window.__strokeDiagnostics?.onPointBuffered(); // Telemetry: Buffered point
           } else if (state === 'active') {
-            // Normal processing in 'active' phase
-            processBrushPointWithConfig(canvasX, canvasY, pressure, idx);
-            window.__strokeDiagnostics?.onPointBuffered(); // Telemetry: Processed point
+            // Queue point for batch processing in RAF loop (performance optimization)
+            inputQueueRef.current.push({ x: canvasX, y: canvasY, pressure, pointIndex: idx });
+            window.__strokeDiagnostics?.onPointBuffered(); // Telemetry: Queued point
           }
           // Ignore in 'idle' or 'finishing' state
           continue;
@@ -1046,7 +1106,7 @@ export function Canvas() {
         }
       }
     },
-    [isPanning, pan, drawPoints, scale, setScale, currentTool, processBrushPointWithConfig]
+    [isPanning, pan, drawPoints, scale, setScale, currentTool]
   );
 
   const handlePointerUp = useCallback(

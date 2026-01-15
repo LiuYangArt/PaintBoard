@@ -66,6 +66,7 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
     latency: LatencyProfilerStats;
     fps: FrameStats;
     lagometer: LagometerStats;
+    queueDepth: number;
   } | null>(null);
 
   // Calculate panel style
@@ -83,6 +84,7 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
           latency: bench.latencyProfiler.getStats(),
           fps: bench.fpsCounter.getStats(),
           lagometer: bench.lagometer.getStats(),
+          queueDepth: bench.getQueueDepth?.() ?? 0,
         });
       }
     }, 500);
@@ -408,6 +410,13 @@ export function DebugPanel({ canvas, onClose }: DebugPanelProps) {
                 <span className="stat-sub">
                   ({benchmarkStats.lagometer.lagAsScreenPercent.toFixed(1)}%,{' '}
                   {benchmarkStats.lagometer.lagAsBrushRadii.toFixed(1)}x)
+                </span>
+              </div>
+              <div className="stat-row">
+                <span className="stat-label">Queue Depth:</span>
+                <span className="stat-value">{benchmarkStats.queueDepth}</span>
+                <span className="stat-sub">
+                  {benchmarkStats.queueDepth > 10 ? '⚠️ Backlog' : '✅ OK'}
                 </span>
               </div>
             </div>
