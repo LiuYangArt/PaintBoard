@@ -4,7 +4,7 @@ import {
   BrushMaskType,
   RenderMode,
   ColorBlendMode,
-  GPURenderScale,
+  GPURenderScaleMode,
 } from '@/stores/tool';
 import './BrushPanel.css';
 
@@ -25,10 +25,13 @@ const COLOR_BLEND_MODES: { id: ColorBlendMode; label: string; description: strin
   { id: 'linear', label: 'Linear', description: 'Smoother gradients (default)' },
 ];
 
-const GPU_RENDER_SCALES: { id: GPURenderScale; label: string; description: string }[] = [
-  { id: 1.0, label: '100%', description: 'Full resolution (best quality)' },
-  { id: 0.75, label: '75%', description: 'Better performance for large brushes' },
-  { id: 0.5, label: '50%', description: 'Best performance (slight quality loss)' },
+const GPU_RENDER_SCALE_MODES: { id: GPURenderScaleMode; label: string; description: string }[] = [
+  { id: 'off', label: 'Off', description: 'Always render at full resolution' },
+  {
+    id: 'auto',
+    label: 'Auto',
+    description: 'Downsample for soft large brushes (hardness < 70, size > 300)',
+  },
 ];
 
 /** Pressure toggle button component */
@@ -129,8 +132,8 @@ export function BrushPanel(): JSX.Element {
     setRenderMode,
     colorBlendMode,
     setColorBlendMode,
-    gpuRenderScale,
-    setGpuRenderScale,
+    gpuRenderScaleMode,
+    setGpuRenderScaleMode,
   } = useToolStore();
 
   return (
@@ -280,16 +283,16 @@ export function BrushPanel(): JSX.Element {
 
         {renderMode === 'gpu' && (
           <div className="brush-setting-row">
-            <span className="brush-setting-label">Resolution</span>
+            <span className="brush-setting-label">Downsample</span>
             <select
-              value={gpuRenderScale}
-              onChange={(e) => setGpuRenderScale(Number(e.target.value) as GPURenderScale)}
+              value={gpuRenderScaleMode}
+              onChange={(e) => setGpuRenderScaleMode(e.target.value as GPURenderScaleMode)}
               className="brush-select"
-              title={GPU_RENDER_SCALES.find((m) => m.id === gpuRenderScale)?.description}
+              title={GPU_RENDER_SCALE_MODES.find((m) => m.id === gpuRenderScaleMode)?.description}
             >
-              {GPU_RENDER_SCALES.map((scale) => (
-                <option key={scale.id} value={scale.id} title={scale.description}>
-                  {scale.label}
+              {GPU_RENDER_SCALE_MODES.map((mode) => (
+                <option key={mode.id} value={mode.id} title={mode.description}>
+                  {mode.label}
                 </option>
               ))}
             </select>

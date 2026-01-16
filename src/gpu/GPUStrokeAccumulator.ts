@@ -23,7 +23,7 @@ import { PingPongBuffer } from './resources/PingPongBuffer';
 import { InstanceBuffer } from './resources/InstanceBuffer';
 import { BrushPipeline } from './pipeline/BrushPipeline';
 import { GPUProfiler, CPUTimer } from './profiler';
-import { useToolStore, type ColorBlendMode, type GPURenderScale } from '@/stores/tool';
+import { useToolStore, type ColorBlendMode, type GPURenderScaleMode } from '@/stores/tool';
 
 export class GPUStrokeAccumulator {
   private device: GPUDevice;
@@ -63,8 +63,11 @@ export class GPUStrokeAccumulator {
   // Cached color blend mode to avoid redundant updates
   private cachedColorBlendMode: ColorBlendMode = 'linear';
 
-  // Cached render scale to avoid redundant updates
-  private cachedRenderScale: GPURenderScale = 1.0;
+  // Cached render scale mode to avoid redundant updates
+  private cachedRenderScaleMode: GPURenderScaleMode = 'off';
+
+  // Current actual render scale (computed from mode + brush params)
+  private currentRenderScale: number = 1.0;
 
   // Performance timing
   private cpuTimer: CPUTimer = new CPUTimer();
@@ -147,7 +150,7 @@ export class GPUStrokeAccumulator {
     this.height = height;
 
     // Resize with current render scale
-    this.pingPongBuffer.resize(width, height, this.cachedRenderScale);
+    this.pingPongBuffer.resize(width, height, this.currentRenderScale);
     this.brushPipeline.updateCanvasSize(
       this.pingPongBuffer.textureWidth,
       this.pingPongBuffer.textureHeight
@@ -193,17 +196,34 @@ export class GPUStrokeAccumulator {
 
   /**
    * Sync render scale from store to ping-pong buffer
+   * In auto mode, downsample to 50% for soft large brushes (hardness < 70, size > 300)
    */
   private syncRenderScale(): void {
-    const scale = useToolStore.getState().gpuRenderScale;
-    if (scale !== this.cachedRenderScale) {
-      this.pingPongBuffer.setRenderScale(scale);
+    const mode = useToolStore.getState().gpuRenderScaleMode;
+    const state = useToolStore.getState();
+
+    // Compute actual scale based on mode
+    let targetScale = 1.0;
+    if (mode === 'auto') {
+      // Only downsample for soft large brushes
+      const isSoftBrush = state.brushHardness < 70;
+      const isLargeBrush = state.brushSize > 300;
+      if (isSoftBrush && isLargeBrush) {
+        targetScale = 0.5;
+      }
+    }
+
+    // Check if we need to update
+    if (mode !== this.cachedRenderScaleMode || targetScale !== this.currentRenderScale) {
+      this.cachedRenderScaleMode = mode;
+      this.currentRenderScale = targetScale;
+
+      this.pingPongBuffer.setRenderScale(targetScale);
       this.brushPipeline.updateCanvasSize(
         this.pingPongBuffer.textureWidth,
         this.pingPongBuffer.textureHeight
       );
       this.recreateReadbackBuffers();
-      this.cachedRenderScale = scale;
     }
   }
 
@@ -237,7 +257,7 @@ export class GPUStrokeAccumulator {
     const radius = params.size / 2;
 
     // Scale coordinates and size for lower resolution rendering
-    const scale = this.cachedRenderScale;
+    const scale = this.currentRenderScale;
     const dabData: DabInstanceData = {
       x: params.x * scale,
       y: params.y * scale,
@@ -480,7 +500,7 @@ export class GPUStrokeAccumulator {
 
         const rectWidth = rect.right - rect.left;
         const rectHeight = rect.bottom - rect.top;
-        const scale = this.cachedRenderScale;
+        const scale = this.currentRenderScale;
 
         if (rectWidth > 0 && rectHeight > 0) {
           // Create ImageData for the dirty region (full resolution preview)
