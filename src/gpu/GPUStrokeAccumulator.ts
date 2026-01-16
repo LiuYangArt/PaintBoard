@@ -23,7 +23,7 @@ import { PingPongBuffer } from './resources/PingPongBuffer';
 import { InstanceBuffer } from './resources/InstanceBuffer';
 import { BrushPipeline } from './pipeline/BrushPipeline';
 import { GPUProfiler, CPUTimer } from './profiler';
-import { useToolStore, type ColorBlendMode } from '@/stores/tool';
+import { useToolStore, type ColorBlendMode, type GPURenderScale } from '@/stores/tool';
 
 export class GPUStrokeAccumulator {
   private device: GPUDevice;
@@ -62,6 +62,9 @@ export class GPUStrokeAccumulator {
 
   // Cached color blend mode to avoid redundant updates
   private cachedColorBlendMode: ColorBlendMode = 'linear';
+
+  // Cached render scale to avoid redundant updates
+  private cachedRenderScale: GPURenderScale = 1.0;
 
   // Performance timing
   private cpuTimer: CPUTimer = new CPUTimer();
@@ -102,10 +105,14 @@ export class GPUStrokeAccumulator {
   }
 
   private createReadbackBuffer(): void {
+    // Use actual texture dimensions (may be scaled)
+    const texW = this.pingPongBuffer.textureWidth;
+    const texH = this.pingPongBuffer.textureHeight;
+
     // rgba32float = 16 bytes per pixel (4 channels * 4 bytes/channel)
     // Rows must be aligned to 256 bytes
-    this.readbackBytesPerRow = Math.ceil((this.width * 16) / 256) * 256;
-    const size = this.readbackBytesPerRow * this.height;
+    this.readbackBytesPerRow = Math.ceil((texW * 16) / 256) * 256;
+    const size = this.readbackBytesPerRow * texH;
 
     this.readbackBuffer = this.device.createBuffer({
       label: 'Stroke Readback Buffer',
@@ -121,6 +128,13 @@ export class GPUStrokeAccumulator {
     });
   }
 
+  /** Destroy and recreate readback buffers (after texture resize) */
+  private recreateReadbackBuffers(): void {
+    this.readbackBuffer?.destroy();
+    this.previewReadbackBuffer?.destroy();
+    this.createReadbackBuffer();
+  }
+
   /**
    * Resize the accumulator (clears content)
    */
@@ -132,15 +146,17 @@ export class GPUStrokeAccumulator {
     this.width = width;
     this.height = height;
 
-    this.pingPongBuffer.resize(width, height);
-    this.brushPipeline.updateCanvasSize(width, height);
+    // Resize with current render scale
+    this.pingPongBuffer.resize(width, height, this.cachedRenderScale);
+    this.brushPipeline.updateCanvasSize(
+      this.pingPongBuffer.textureWidth,
+      this.pingPongBuffer.textureHeight
+    );
 
     this.previewCanvas.width = width;
     this.previewCanvas.height = height;
 
-    this.readbackBuffer?.destroy();
-    this.previewReadbackBuffer?.destroy();
-    this.createReadbackBuffer();
+    this.recreateReadbackBuffers();
 
     this.clear();
   }
@@ -159,6 +175,9 @@ export class GPUStrokeAccumulator {
 
     // Sync color blend mode from store
     this.syncColorBlendMode();
+
+    // Sync render scale from store
+    this.syncRenderScale();
   }
 
   /**
@@ -169,6 +188,22 @@ export class GPUStrokeAccumulator {
     if (mode !== this.cachedColorBlendMode) {
       this.brushPipeline.updateColorBlendMode(mode);
       this.cachedColorBlendMode = mode;
+    }
+  }
+
+  /**
+   * Sync render scale from store to ping-pong buffer
+   */
+  private syncRenderScale(): void {
+    const scale = useToolStore.getState().gpuRenderScale;
+    if (scale !== this.cachedRenderScale) {
+      this.pingPongBuffer.setRenderScale(scale);
+      this.brushPipeline.updateCanvasSize(
+        this.pingPongBuffer.textureWidth,
+        this.pingPongBuffer.textureHeight
+      );
+      this.recreateReadbackBuffers();
+      this.cachedRenderScale = scale;
     }
   }
 
@@ -195,20 +230,18 @@ export class GPUStrokeAccumulator {
     return this.active;
   }
 
-  /**
-   * Stamp a dab onto the buffer
-   * Compatible with CPU StrokeAccumulator.stampDab() API
-   */
   stampDab(params: GPUDabParams): void {
     if (!this.active) return;
 
     const rgb = this.hexToRgb(params.color);
     const radius = params.size / 2;
 
+    // Scale coordinates and size for lower resolution rendering
+    const scale = this.cachedRenderScale;
     const dabData: DabInstanceData = {
-      x: params.x,
-      y: params.y,
-      size: radius,
+      x: params.x * scale,
+      y: params.y * scale,
+      size: radius * scale,
       hardness: params.hardness,
       r: rgb.r / 255,
       g: rgb.g / 255,
@@ -218,6 +251,7 @@ export class GPUStrokeAccumulator {
     };
 
     this.instanceBuffer.push(dabData);
+    // Dirty rect is in logical coordinates (for preview canvas)
     this.expandDirtyRect(params.x, params.y, radius, params.hardness);
     this.dabsSinceLastFlush++;
 
@@ -348,7 +382,7 @@ export class GPUStrokeAccumulator {
   }
 
   /**
-   * Calculate scissor rect for the batch
+   * Calculate scissor rect for the batch (in texture coordinates)
    */
   private computeScissorRect(bbox: {
     x: number;
@@ -358,10 +392,14 @@ export class GPUStrokeAccumulator {
   }): { x: number; y: number; w: number; h: number } | null {
     if (bbox.width <= 0 || bbox.height <= 0) return null;
 
-    const x = Math.max(0, bbox.x);
-    const y = Math.max(0, bbox.y);
-    const w = Math.min(this.width - x, bbox.width);
-    const h = Math.min(this.height - y, bbox.height);
+    // bbox is already in texture coordinates (scaled by renderScale in stampDab)
+    const texW = this.pingPongBuffer.textureWidth;
+    const texH = this.pingPongBuffer.textureHeight;
+
+    const x = Math.max(0, Math.floor(bbox.x));
+    const y = Math.max(0, Math.floor(bbox.y));
+    const w = Math.min(texW - x, Math.ceil(bbox.width));
+    const h = Math.min(texH - y, Math.ceil(bbox.height));
 
     return w > 0 && h > 0 ? { x, y, w, h } : null;
   }
@@ -419,10 +457,12 @@ export class GPUStrokeAccumulator {
       try {
         // Copy current texture to preview readback buffer
         const encoder = this.device.createCommandEncoder();
+        const texW = this.pingPongBuffer.textureWidth;
+        const texH = this.pingPongBuffer.textureHeight;
         encoder.copyTextureToBuffer(
           { texture: this.pingPongBuffer.source },
           { buffer: this.previewReadbackBuffer!, bytesPerRow: this.readbackBytesPerRow },
-          [this.width, this.height]
+          [texW, texH]
         );
         this.device.queue.submit([encoder.finish()]);
 
@@ -430,7 +470,7 @@ export class GPUStrokeAccumulator {
         await this.previewReadbackBuffer!.mapAsync(GPUMapMode.READ);
         const gpuData = new Float32Array(this.previewReadbackBuffer!.getMappedRange());
 
-        // Get dirty rect bounds
+        // Get dirty rect bounds (in logical/canvas coordinates)
         const rect = {
           left: Math.max(0, this.dirtyRect.left),
           top: Math.max(0, this.dirtyRect.top),
@@ -440,17 +480,20 @@ export class GPUStrokeAccumulator {
 
         const rectWidth = rect.right - rect.left;
         const rectHeight = rect.bottom - rect.top;
+        const scale = this.cachedRenderScale;
 
         if (rectWidth > 0 && rectHeight > 0) {
-          // Create ImageData for the dirty region
+          // Create ImageData for the dirty region (full resolution preview)
           const imageData = this.previewCtx.createImageData(rectWidth, rectHeight);
           const floatsPerRow = this.readbackBytesPerRow / 4;
 
+          // Sample from scaled texture with bilinear-ish nearest neighbor
           for (let py = 0; py < rectHeight; py++) {
             for (let px = 0; px < rectWidth; px++) {
-              const bufferX = rect.left + px;
-              const bufferY = rect.top + py;
-              const srcIdx = bufferY * floatsPerRow + bufferX * 4;
+              // Map preview pixel to texture pixel (nearest neighbor)
+              const texX = Math.floor((rect.left + px) * scale);
+              const texY = Math.floor((rect.top + py) * scale);
+              const srcIdx = texY * floatsPerRow + texX * 4;
               const dstIdx = (py * rectWidth + px) * 4;
 
               // Convert float (0-1) to uint8 (0-255)

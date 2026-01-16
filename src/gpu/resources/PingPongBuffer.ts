@@ -17,15 +17,21 @@ export class PingPongBuffer {
   private device: GPUDevice;
 
   readonly format: GPUTextureFormat = 'rgba32float'; // Changed from rgba16float for easy readback
-  private _width: number;
-  private _height: number;
+  private _width: number; // Logical width (canvas size)
+  private _height: number; // Logical height (canvas size)
+  private _renderScale: number = 1.0; // Render scale (1.0 = full res)
+  private _textureWidth: number; // Actual texture width
+  private _textureHeight: number; // Actual texture height
 
-  constructor(device: GPUDevice, width: number, height: number) {
+  constructor(device: GPUDevice, width: number, height: number, renderScale: number = 1.0) {
     this.device = device;
     this._width = width;
     this._height = height;
+    this._renderScale = renderScale;
+    this._textureWidth = Math.max(1, Math.floor(width * renderScale));
+    this._textureHeight = Math.max(1, Math.floor(height * renderScale));
 
-    const textureDesc = this.createTextureDescriptor(width, height);
+    const textureDesc = this.createTextureDescriptor(this._textureWidth, this._textureHeight);
 
     this.textureA = device.createTexture(textureDesc);
     this.textureB = device.createTexture(textureDesc);
@@ -67,6 +73,21 @@ export class PingPongBuffer {
     return this._height;
   }
 
+  /** Actual texture width (may differ from logical width when scaled) */
+  get textureWidth(): number {
+    return this._textureWidth;
+  }
+
+  /** Actual texture height (may differ from logical height when scaled) */
+  get textureHeight(): number {
+    return this._textureHeight;
+  }
+
+  /** Current render scale (0.5-1.0) */
+  get renderScale(): number {
+    return this._renderScale;
+  }
+
   /**
    * Swap source and destination roles
    * Call this after each render pass
@@ -82,11 +103,18 @@ export class PingPongBuffer {
   copyRect(encoder: GPUCommandEncoder, x: number, y: number, width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
 
+    // Scale coordinates to texture space
+    const scale = this._renderScale;
+    const scaledX = Math.floor(x * scale);
+    const scaledY = Math.floor(y * scale);
+    const scaledW = Math.ceil(width * scale);
+    const scaledH = Math.ceil(height * scale);
+
     // Clamp to texture bounds
-    const clampedX = Math.max(0, Math.min(x, this._width));
-    const clampedY = Math.max(0, Math.min(y, this._height));
-    const clampedW = Math.min(width, this._width - clampedX);
-    const clampedH = Math.min(height, this._height - clampedY);
+    const clampedX = Math.max(0, Math.min(scaledX, this._textureWidth));
+    const clampedY = Math.max(0, Math.min(scaledY, this._textureHeight));
+    const clampedW = Math.min(scaledW, this._textureWidth - clampedX);
+    const clampedH = Math.min(scaledH, this._textureHeight - clampedY);
 
     if (clampedW <= 0 || clampedH <= 0) return;
 
@@ -103,43 +131,33 @@ export class PingPongBuffer {
    */
   copySourceToDest(encoder: GPUCommandEncoder): void {
     encoder.copyTextureToTexture({ texture: this.currentSource }, { texture: this.currentDest }, [
-      this._width,
-      this._height,
+      this._textureWidth,
+      this._textureHeight,
     ]);
   }
 
   /**
    * Clear both buffers to transparent
-   * Uses a clear render pass for proper GPU clearing
    */
   clear(device: GPUDevice): void {
     const encoder = device.createCommandEncoder();
 
-    // Clear texture A
-    const passA = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: this.textureA.createView(),
-          clearValue: { r: 0, g: 0, b: 0, a: 0 },
-          loadOp: 'clear',
-          storeOp: 'store',
-        },
-      ],
-    });
-    passA.end();
+    const clearTexture = (texture: GPUTexture) => {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [
+          {
+            view: texture.createView(),
+            clearValue: { r: 0, g: 0, b: 0, a: 0 },
+            loadOp: 'clear',
+            storeOp: 'store',
+          },
+        ],
+      });
+      pass.end();
+    };
 
-    // Clear texture B
-    const passB = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: this.textureB.createView(),
-          clearValue: { r: 0, g: 0, b: 0, a: 0 },
-          loadOp: 'clear',
-          storeOp: 'store',
-        },
-      ],
-    });
-    passB.end();
+    clearTexture(this.textureA);
+    clearTexture(this.textureB);
 
     device.queue.submit([encoder.finish()]);
   }
@@ -147,15 +165,24 @@ export class PingPongBuffer {
   /**
    * Resize the buffers (clears content)
    */
-  resize(width: number, height: number): void {
-    if (width === this._width && height === this._height) {
+  resize(width: number, height: number, renderScale?: number): void {
+    const newScale = renderScale ?? this._renderScale;
+    const newTextureW = Math.max(1, Math.floor(width * newScale));
+    const newTextureH = Math.max(1, Math.floor(height * newScale));
+
+    if (
+      width === this._width &&
+      height === this._height &&
+      newTextureW === this._textureWidth &&
+      newTextureH === this._textureHeight
+    ) {
       return;
     }
 
     this.textureA.destroy();
     this.textureB.destroy();
 
-    const textureDesc = this.createTextureDescriptor(width, height);
+    const textureDesc = this.createTextureDescriptor(newTextureW, newTextureH);
 
     this.textureA = this.device.createTexture(textureDesc);
     this.textureB = this.device.createTexture(textureDesc);
@@ -164,6 +191,16 @@ export class PingPongBuffer {
 
     this._width = width;
     this._height = height;
+    this._renderScale = newScale;
+    this._textureWidth = newTextureW;
+    this._textureHeight = newTextureH;
+  }
+
+  /**
+   * Change render scale (recreates textures if needed)
+   */
+  setRenderScale(scale: number): void {
+    this.resize(this._width, this._height, scale);
   }
 
   /**

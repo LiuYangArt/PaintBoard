@@ -4,6 +4,7 @@ import {
   BrushMaskType,
   RenderMode,
   ColorBlendMode,
+  GPURenderScale,
 } from '@/stores/tool';
 import './BrushPanel.css';
 
@@ -22,6 +23,12 @@ const RENDER_MODES: { id: RenderMode; label: string; description: string }[] = [
 const COLOR_BLEND_MODES: { id: ColorBlendMode; label: string; description: string }[] = [
   { id: 'srgb', label: 'sRGB', description: 'Match CPU rendering exactly' },
   { id: 'linear', label: 'Linear', description: 'Smoother gradients (default)' },
+];
+
+const GPU_RENDER_SCALES: { id: GPURenderScale; label: string; description: string }[] = [
+  { id: 1.0, label: '100%', description: 'Full resolution (best quality)' },
+  { id: 0.75, label: '75%', description: 'Better performance for large brushes' },
+  { id: 0.5, label: '50%', description: 'Best performance (slight quality loss)' },
 ];
 
 /** Pressure toggle button component */
@@ -122,6 +129,8 @@ export function BrushPanel(): JSX.Element {
     setRenderMode,
     colorBlendMode,
     setColorBlendMode,
+    gpuRenderScale,
+    setGpuRenderScale,
   } = useToolStore();
 
   return (
@@ -263,6 +272,24 @@ export function BrushPanel(): JSX.Element {
               {COLOR_BLEND_MODES.map((mode) => (
                 <option key={mode.id} value={mode.id} title={mode.description}>
                   {mode.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {renderMode === 'gpu' && (
+          <div className="brush-setting-row">
+            <span className="brush-setting-label">Resolution</span>
+            <select
+              value={gpuRenderScale}
+              onChange={(e) => setGpuRenderScale(Number(e.target.value) as GPURenderScale)}
+              className="brush-select"
+              title={GPU_RENDER_SCALES.find((m) => m.id === gpuRenderScale)?.description}
+            >
+              {GPU_RENDER_SCALES.map((scale) => (
+                <option key={scale.id} value={scale.id} title={scale.description}>
+                  {scale.label}
                 </option>
               ))}
             </select>

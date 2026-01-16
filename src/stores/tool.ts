@@ -26,6 +26,14 @@ export type RenderMode = 'gpu' | 'cpu';
  */
 export type ColorBlendMode = 'srgb' | 'linear';
 
+/**
+ * GPU render scale - controls texture resolution for GPU rendering
+ * - 1.0: Full resolution (100%)
+ * - 0.75: 75% resolution (better performance for large brushes)
+ * - 0.5: 50% resolution (best performance, slight quality loss)
+ */
+export type GPURenderScale = 1.0 | 0.75 | 0.5;
+
 /** Clamp brush/eraser size to valid range */
 const clampSize = (size: number): number => Math.max(1, Math.min(800, size));
 
@@ -89,6 +97,9 @@ interface ToolState {
   // Color blend mode (GPU only)
   colorBlendMode: ColorBlendMode;
 
+  // GPU render scale (GPU only)
+  gpuRenderScale: GPURenderScale;
+
   // Actions
   setTool: (tool: ToolType) => void;
   setBrushSize: (size: number) => void;
@@ -115,6 +126,7 @@ interface ToolState {
   toggleCrosshair: () => void;
   setRenderMode: (mode: RenderMode) => void;
   setColorBlendMode: (mode: ColorBlendMode) => void;
+  setGpuRenderScale: (scale: GPURenderScale) => void;
 }
 
 export const useToolStore = create<ToolState>()(
@@ -140,6 +152,7 @@ export const useToolStore = create<ToolState>()(
       showCrosshair: false,
       renderMode: 'gpu',
       colorBlendMode: 'linear',
+      gpuRenderScale: 1.0,
 
       // Actions
       setTool: (tool) => set({ currentTool: tool }),
@@ -209,6 +222,8 @@ export const useToolStore = create<ToolState>()(
       setRenderMode: (mode) => set({ renderMode: mode }),
 
       setColorBlendMode: (mode) => set({ colorBlendMode: mode }),
+
+      setGpuRenderScale: (scale) => set({ gpuRenderScale: scale }),
     }),
     {
       name: 'paintboard-brush-settings',
@@ -231,6 +246,7 @@ export const useToolStore = create<ToolState>()(
         pressureCurve: state.pressureCurve,
         renderMode: state.renderMode,
         colorBlendMode: state.colorBlendMode,
+        gpuRenderScale: state.gpuRenderScale,
       }),
     }
   )
