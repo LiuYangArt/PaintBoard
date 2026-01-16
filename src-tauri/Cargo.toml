@@ -37,6 +37,12 @@ raw-window-handle = "0.6"
 # Image processing
 image = "0.25"
 
+# Binary parsing
+byteorder = "1.5"
+
+# Base64 encoding for brush textures
+base64 = "0.22"
+
 # PSD file support
 psd = "0.3"
 

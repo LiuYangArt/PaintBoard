@@ -1,4 +1,5 @@
-- [x] (Fixed #29) 色盘取色的圆圈有延迟，比cursor的crosshair要慢几帧 ， 在色盘拖拽取色的时候直接隐藏cursor
+感觉gpu比cpu笔刷延时大，可能是什么原因？
+考虑 1. benchmark 增加cpu测试2. 为什么krita纯cpu笔刷这么快3. 考虑200px以下笔刷用cpu，200以上gpu，混合构架
 
 增加wintab/windows ink切换
 

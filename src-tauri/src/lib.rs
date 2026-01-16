@@ -2,6 +2,7 @@
 //!
 //! This is the main library crate that exposes all modules for the Tauri backend.
 
+pub mod abr;
 pub mod brush;
 pub mod commands;
 pub mod input;
@@ -45,6 +46,7 @@ pub fn run() {
             commands::get_tablet_status,
             commands::push_pointer_event,
             commands::stamp_soft_dab,
+            commands::import_abr_file,
         ])
         .setup(|_app| {
             #[cfg(debug_assertions)]

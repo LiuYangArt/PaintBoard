@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   useToolStore,
   PressureCurve,
@@ -7,6 +10,23 @@ import {
   GPURenderScaleMode,
 } from '@/stores/tool';
 import './BrushPanel.css';
+
+/** Brush preset from ABR import */
+interface BrushPreset {
+  id: string;
+  name: string;
+  diameter: number;
+  spacing: number;
+  hardness: number;
+  angle: number;
+  roundness: number;
+  hasTexture: boolean;
+  textureData: string | null;
+  textureWidth: number | null;
+  textureHeight: number | null;
+  sizePressure: boolean;
+  opacityPressure: boolean;
+}
 
 const PRESSURE_CURVES: { id: PressureCurve; label: string }[] = [
   { id: 'linear', label: 'Linear' },
@@ -103,6 +123,10 @@ function SliderRow({
 }
 
 export function BrushPanel(): JSX.Element {
+  const [importedPresets, setImportedPresets] = useState<BrushPreset[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
   const {
     brushSize,
     setBrushSize,
@@ -135,6 +159,44 @@ export function BrushPanel(): JSX.Element {
     gpuRenderScaleMode,
     setGpuRenderScaleMode,
   } = useToolStore();
+
+  /** Import ABR file */
+  const handleImportABR = async () => {
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Photoshop Brushes', extensions: ['abr'] }],
+      });
+
+      if (selected) {
+        const presets = await invoke<BrushPreset[]>('import_abr_file', {
+          path: selected,
+        });
+        setImportedPresets(presets);
+        console.log('Imported', presets.length, 'brushes');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setImportError(message);
+      console.error('ABR import failed:', err);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  /** Apply preset to current brush settings */
+  const applyPreset = (preset: BrushPreset) => {
+    setBrushSize(Math.round(preset.diameter));
+    setBrushHardness(Math.round(preset.hardness));
+    setBrushSpacing(preset.spacing / 100);
+    setBrushRoundness(Math.round(preset.roundness));
+    setBrushAngle(Math.round(preset.angle));
+    // Note: Texture brushes not yet supported in GPU pipeline
+    console.log('Applied preset:', preset.name);
+  };
 
   return (
     <div className="brush-panel">
@@ -296,6 +358,39 @@ export function BrushPanel(): JSX.Element {
                 </option>
               ))}
             </select>
+          </div>
+        )}
+      </div>
+
+      {/* ABR Import Section */}
+      <div className="brush-panel-section">
+        <h4>Brush Presets</h4>
+        <button className="abr-import-btn" onClick={handleImportABR} disabled={isImporting}>
+          {isImporting ? 'Importing...' : 'Import ABR'}
+        </button>
+
+        {importError && <div className="abr-error">{importError}</div>}
+
+        {importedPresets.length > 0 && (
+          <div className="abr-preset-grid">
+            {importedPresets.map((preset) => (
+              <button
+                key={preset.id}
+                className="abr-preset-item"
+                onClick={() => applyPreset(preset)}
+                title={`${preset.name}\n${preset.diameter}px, ${preset.hardness}% hardness`}
+              >
+                {preset.hasTexture && preset.textureData ? (
+                  <img
+                    src={`data:image/png;base64,${preset.textureData}`}
+                    alt={preset.name}
+                    className="abr-preset-texture"
+                  />
+                ) : (
+                  <div className="abr-preset-placeholder">{Math.round(preset.diameter)}</div>
+                )}
+              </button>
+            ))}
           </div>
         )}
       </div>
