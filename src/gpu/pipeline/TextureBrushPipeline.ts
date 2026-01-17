@@ -1,49 +1,42 @@
 /**
  * TextureBrushPipeline - WebGPU render pipeline for texture-based brush rendering
  *
- * This pipeline is COMPLETELY SEPARATE from BrushPipeline to ensure:
- * - Zero impact on existing soft/hard parametric brushes
- * - Clean separation of texture vs procedural brush logic
- * - Independent optimization paths
+ * Extends BaseBrushPipeline with:
+ * - Texture sampling from imported brush tips (ABR files)
+ * - Brush texture + sampler binding
  *
  * Uses textureBrush.wgsl shader for texture sampling with Alpha Darken blending.
  */
 
+import { BaseBrushPipeline } from './BaseBrushPipeline';
 import type { GPUBrushTexture } from '../resources/TextureAtlas';
 import { TEXTURE_DAB_INSTANCE_SIZE } from '../types';
 
 // Import shader source
 import textureBrushShaderCode from '../shaders/textureBrush.wgsl?raw';
 
-export class TextureBrushPipeline {
-  private device: GPUDevice;
-  private pipeline: GPURenderPipeline;
-  private uniformBuffer: GPUBuffer;
-  private bindGroupLayout: GPUBindGroupLayout;
-
-  // Cached values to avoid redundant updates
-  private cachedWidth: number = 0;
-  private cachedHeight: number = 0;
-  private cachedColorBlendMode: number = 0;
-
+export class TextureBrushPipeline extends BaseBrushPipeline {
   constructor(device: GPUDevice) {
-    this.device = device;
+    super(device);
 
-    // Create shader module
-    const shaderModule = device.createShaderModule({
-      label: 'Texture Brush Shader',
-      code: textureBrushShaderCode,
-    });
+    // Initialize pipeline (calls abstract methods)
+    this.initialize();
+  }
 
-    // Uniform buffer for canvas size (16 bytes: vec2 + blend mode + padding)
-    this.uniformBuffer = device.createBuffer({
-      label: 'Texture Brush Uniforms',
-      size: 16,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+  // ============================================================================
+  // Abstract method implementations
+  // ============================================================================
 
-    // Bind group layout - different from BrushPipeline (has texture + sampler instead of gaussian LUT)
-    this.bindGroupLayout = device.createBindGroupLayout({
+  protected getShaderCode(): string {
+    return textureBrushShaderCode;
+  }
+
+  protected getPipelineLabel(): string {
+    return 'Texture Brush';
+  }
+
+  protected createBindGroupLayout(): GPUBindGroupLayout {
+    return this.device.createBindGroupLayout({
       label: 'Texture Brush Bind Group Layout',
       entries: [
         {
@@ -72,125 +65,83 @@ export class TextureBrushPipeline {
         },
       ],
     });
+  }
 
-    // Pipeline layout
-    const pipelineLayout = device.createPipelineLayout({
+  protected getInstanceBufferLayout(): GPUVertexBufferLayout {
+    return {
+      // Instance buffer layout (per-instance data, 48 bytes)
+      // Layout: x, y, size, roundness, angle, r, g, b, dabOpacity, flow, texWidth, texHeight
+      arrayStride: TEXTURE_DAB_INSTANCE_SIZE,
+      stepMode: 'instance',
+      attributes: [
+        {
+          // dab_pos: vec2<f32>
+          shaderLocation: 0,
+          offset: 0,
+          format: 'float32x2',
+        },
+        {
+          // dab_size: f32
+          shaderLocation: 1,
+          offset: 8,
+          format: 'float32',
+        },
+        {
+          // roundness: f32
+          shaderLocation: 2,
+          offset: 12,
+          format: 'float32',
+        },
+        {
+          // angle: f32
+          shaderLocation: 3,
+          offset: 16,
+          format: 'float32',
+        },
+        {
+          // color: vec3<f32> (r, g, b)
+          shaderLocation: 4,
+          offset: 20,
+          format: 'float32x3',
+        },
+        {
+          // dabOpacity: f32
+          shaderLocation: 5,
+          offset: 32,
+          format: 'float32',
+        },
+        {
+          // flow: f32
+          shaderLocation: 6,
+          offset: 36,
+          format: 'float32',
+        },
+        {
+          // tex_size: vec2<f32>
+          shaderLocation: 7,
+          offset: 40,
+          format: 'float32x2',
+        },
+      ],
+    };
+  }
+
+  protected createPipeline(): GPURenderPipeline {
+    const shaderModule = this.createShaderModule();
+
+    const pipelineLayout = this.device.createPipelineLayout({
       label: 'Texture Brush Pipeline Layout',
       bindGroupLayouts: [this.bindGroupLayout],
     });
 
-    // Create render pipeline
-    this.pipeline = device.createRenderPipeline({
-      label: 'Texture Brush Render Pipeline',
-      layout: pipelineLayout,
-      vertex: {
-        module: shaderModule,
-        entryPoint: 'vs_main',
-        buffers: [
-          {
-            // Instance buffer layout (per-instance data, 48 bytes)
-            // Layout: x, y, size, roundness, angle, r, g, b, dabOpacity, flow, texWidth, texHeight
-            arrayStride: TEXTURE_DAB_INSTANCE_SIZE,
-            stepMode: 'instance',
-            attributes: [
-              {
-                // dab_pos: vec2<f32>
-                shaderLocation: 0,
-                offset: 0,
-                format: 'float32x2',
-              },
-              {
-                // dab_size: f32
-                shaderLocation: 1,
-                offset: 8,
-                format: 'float32',
-              },
-              {
-                // roundness: f32
-                shaderLocation: 2,
-                offset: 12,
-                format: 'float32',
-              },
-              {
-                // angle: f32
-                shaderLocation: 3,
-                offset: 16,
-                format: 'float32',
-              },
-              {
-                // color: vec3<f32> (r, g, b)
-                shaderLocation: 4,
-                offset: 20,
-                format: 'float32x3',
-              },
-              {
-                // dabOpacity: f32
-                shaderLocation: 5,
-                offset: 32,
-                format: 'float32',
-              },
-              {
-                // flow: f32
-                shaderLocation: 6,
-                offset: 36,
-                format: 'float32',
-              },
-              {
-                // tex_size: vec2<f32>
-                shaderLocation: 7,
-                offset: 40,
-                format: 'float32x2',
-              },
-            ],
-          },
-        ],
-      },
-      fragment: {
-        module: shaderModule,
-        entryPoint: 'fs_main',
-        targets: [
-          {
-            format: 'rgba32float',
-            // No hardware blend - Alpha Darken is done in shader
-            blend: undefined,
-          },
-        ],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    });
+    return this.device.createRenderPipeline(
+      this.createBasePipelineDescriptor(shaderModule, pipelineLayout)
+    );
   }
 
-  /**
-   * Update canvas size uniform
-   */
-  updateCanvasSize(width: number, height: number): void {
-    if (width === this.cachedWidth && height === this.cachedHeight) {
-      return;
-    }
-
-    const data = new Float32Array([width, height, this.cachedColorBlendMode, 0]);
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, data);
-
-    this.cachedWidth = width;
-    this.cachedHeight = height;
-  }
-
-  /**
-   * Update color blend mode uniform
-   */
-  updateColorBlendMode(mode: 'srgb' | 'linear'): void {
-    const modeValue = mode === 'linear' ? 1.0 : 0.0;
-    if (modeValue === this.cachedColorBlendMode) {
-      return;
-    }
-
-    const data = new Float32Array([modeValue]);
-    this.device.queue.writeBuffer(this.uniformBuffer, 8, data);
-
-    this.cachedColorBlendMode = modeValue;
-  }
+  // ============================================================================
+  // Public methods
+  // ============================================================================
 
   /**
    * Create a bind group for rendering
@@ -219,19 +170,5 @@ export class TextureBrushPipeline {
         },
       ],
     });
-  }
-
-  /**
-   * Get the render pipeline
-   */
-  get renderPipeline(): GPURenderPipeline {
-    return this.pipeline;
-  }
-
-  /**
-   * Release GPU resources
-   */
-  destroy(): void {
-    this.uniformBuffer.destroy();
   }
 }
