@@ -211,7 +211,7 @@
 参考文件：`@abr/tahraart.abr`
 
 > [!NOTE]
-> Phase 1-2 核心功能已完成，ABR 解析和笔刷预设 UI 待开发
+> Phase 1-2 核心功能已完成，ABR 解析器已实现，笔刷预设 UI 基础版已完成
 
 ### 渲染后端策略
 
@@ -219,10 +219,10 @@
 >
 > 笔刷渲染以 GPU (WebGPU) 为主要实现：
 >
-> | 笔刷类型 | GPU 实现 | CPU 降级 |
-> |----------|----------|----------|
+> | 笔刷类型   | GPU 实现                              | CPU 降级                           |
+> | ---------- | ------------------------------------- | ---------------------------------- |
 > | 参数化笔刷 | `GPUStrokeAccumulator` + `brush.wgsl` | `strokeBuffer.ts` + `maskCache.ts` |
-> | 采样笔刷 | 扩展 GPU 管线，添加纹理图集采样 | 最小实现，仅保证可用 |
+> | 采样笔刷   | 扩展 GPU 管线，添加纹理图集采样       | 最小实现，仅保证可用               |
 >
 > CPU 实现仅作为 WebGPU 不可用时的降级方案，不追求功能对等。
 > 新功能（如采样笔刷）优先在 GPU 实现，CPU 按需补充。
@@ -247,28 +247,28 @@
 - [x] 先要有一个单独的笔刷参数设置面板，承载这些笔刷设置。
 - [x] 持久化笔刷参数设置到本地 json 文件
 - [x] 实现参数化圆形笔刷生成 (硬度/圆度/角度)
-- [ ] 支持采样笔刷 (Sampled Brush Tip)
+- [x] 支持采样笔刷 (Sampled Brush Tip)
 - [x] 实现动态参数系统 (压感/倾斜 -> 大小/透明度) - 基础版已实现
 - [ ] 纹理缓存系统
 
-#### 3.3 ABR 解析与兼容 (Phase 3)
+#### 3.3 ABR 解析与兼容 (Phase 3) ✅ 已完成
 
 > 详见：[`docs/design/brush-system/03_abr_parser.md`](../../design/brush-system/03_abr_parser.md)
 
-- [ ] 移植 psd-tools/Krita 解析逻辑
-- [ ] 实现递归 ActionDescriptor 解析
-- [ ] 建立默认值回退机制 (Fault Tolerance)
-- [ ] 实现 8BIMsamp 纹理提取与归一化
-- [ ] 编写 ABR 导入器 (Tauri Command)
+- [x] 移植 psd-tools/Krita 解析逻辑
+- [ ] 实现递归 ActionDescriptor 解析 (低优先级)
+- [x] 建立默认值回退机制 (Fault Tolerance)
+- [x] 实现 8BIMsamp 纹理提取与归一化
+- [x] 编写 ABR 导入器 (Tauri Command)
 
-#### 3.4 笔刷预设 UI (Phase 4)
+#### 3.4 笔刷预设 UI (Phase 4) ✅ 基础版完成
 
 > 详见：[`docs/design/brush-system/04_ui_ux.md`](../../design/brush-system/04_ui_ux.md)
 
-- [ ] 笔刷面板框架
-- [ ] 预设网格展示 (缩略图)
+- [x] 笔刷面板框架
+- [x] 预设网格展示 (缩略图)
 - [ ] 详细参数编辑器 (展开式)
-- [ ] 导入 ABR 对话框
+- [x] 导入 ABR 对话框
 
 #### 3.5 性能与高级特性 (Phase 5/6)
 

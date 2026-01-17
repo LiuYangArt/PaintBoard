@@ -476,6 +476,12 @@ pub fn push_pointer_event(
 
 use crate::brush::soft_dab::{render_soft_dab, GaussParams};
 
+// ============================================================================
+// ABR Brush Import
+// ============================================================================
+
+use crate::abr::{AbrParser, BrushPreset};
+
 /// Dirty rectangle from soft dab rendering
 pub type SoftDabResult = (Vec<u8>, (usize, usize, usize, usize));
 
@@ -525,6 +531,34 @@ pub fn stamp_soft_dab(
     );
 
     Ok((buffer, dirty_rect))
+}
+
+// ============================================================================
+// ABR Brush Import Command
+// ============================================================================
+
+/// Import brushes from an ABR file
+///
+/// Parses a Photoshop ABR brush file and returns the extracted brush presets.
+/// Supports ABR versions 1, 2, 6, 7, and 10.
+#[tauri::command]
+pub async fn import_abr_file(path: String) -> Result<Vec<BrushPreset>, String> {
+    tracing::info!("Importing ABR file: {}", path);
+
+    let data = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let abr_file =
+        AbrParser::parse(&data).map_err(|e| format!("Failed to parse ABR file: {}", e))?;
+
+    tracing::info!(
+        "Parsed ABR file: version={:?}, {} brushes",
+        abr_file.version,
+        abr_file.brushes.len()
+    );
+
+    let presets: Vec<BrushPreset> = abr_file.brushes.into_iter().map(|b| b.into()).collect();
+
+    Ok(presets)
 }
 
 #[cfg(test)]
