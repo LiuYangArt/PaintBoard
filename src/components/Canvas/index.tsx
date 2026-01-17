@@ -173,6 +173,7 @@ export function Canvas() {
     getPreviewCanvas,
     getPreviewOpacity,
     isStrokeActive,
+    flushPending,
     backend: _activeBackend,
     gpuAvailable: _gpuAvailable,
   } = useBrushRenderer({
@@ -720,6 +721,10 @@ export function Canvas() {
         // Clear processed points from queue
         inputQueueRef.current = count === queue.length ? [] : queue.slice(count);
 
+        // Flush all pending dabs to GPU before composite
+        // This ensures all dabs from this frame are rendered together
+        flushPending();
+
         needsRenderRef.current = true;
       }
 
@@ -737,7 +742,7 @@ export function Canvas() {
       fpsCounter.stop();
       cancelAnimationFrame(id);
     };
-  }, [compositeAndRenderWithPreview, processSinglePoint]);
+  }, [compositeAndRenderWithPreview, processSinglePoint, flushPending]);
 
   // 绘制插值后的点序列 (used for eraser, legacy fallback)
   const drawPoints = useCallback(

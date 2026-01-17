@@ -60,6 +60,8 @@ export interface UseBrushRendererResult {
   getPreviewCanvas: () => HTMLCanvasElement | null;
   getPreviewOpacity: () => number;
   isStrokeActive: () => boolean;
+  /** Flush pending dabs to GPU (call once per frame) */
+  flushPending: () => void;
   /** Actual backend in use (may differ from requested if GPU unavailable) */
   backend: RenderBackend;
   /** Whether GPU is available */
@@ -314,6 +316,17 @@ export function useBrushRenderer({
     return cpuBufferRef.current?.isActive() ?? false;
   }, [backend]);
 
+  /**
+   * Flush pending dabs to GPU (called once per frame by RAF loop)
+   * This ensures all dabs accumulated during the frame are rendered together
+   */
+  const flushPending = useCallback(() => {
+    if (backend === 'gpu' && gpuBufferRef.current) {
+      gpuBufferRef.current.flush();
+    }
+    // CPU path doesn't need explicit flush - it renders immediately
+  }, [backend]);
+
   return {
     beginStroke,
     processPoint,
@@ -321,6 +334,7 @@ export function useBrushRenderer({
     getPreviewCanvas,
     getPreviewOpacity,
     isStrokeActive,
+    flushPending,
     backend,
     gpuAvailable,
   };

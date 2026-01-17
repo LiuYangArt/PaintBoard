@@ -15,7 +15,6 @@ import type { Rect } from '@/utils/strokeBuffer';
 import type { GPUDabParams, DabInstanceData, TextureDabInstanceData } from './types';
 import {
   BATCH_SIZE_THRESHOLD,
-  BATCH_TIME_THRESHOLD_MS,
   DAB_INSTANCE_SIZE,
   TEXTURE_DAB_INSTANCE_SIZE,
   calculateEffectiveRadius,
@@ -57,7 +56,6 @@ export class GPUStrokeAccumulator {
   private previewCtx: CanvasRenderingContext2D;
 
   // Batch timing control
-  private lastFlushTime: number = 0;
   private dabsSinceLastFlush: number = 0;
 
   // Readback buffer for GPU → CPU transfer
@@ -201,7 +199,6 @@ export class GPUStrokeAccumulator {
   beginStroke(): void {
     this.clear();
     this.active = true;
-    this.lastFlushTime = performance.now();
     this.dabsSinceLastFlush = 0;
 
     // Clear GPU buffers
@@ -324,15 +321,10 @@ export class GPUStrokeAccumulator {
       this.expandDirtyRectTexture(params.x, params.y, halfSize);
       this.dabsSinceLastFlush++;
 
-      // Check if batch should be flushed
-      const now = performance.now();
-      const shouldFlush =
-        this.textureInstanceBuffer.count >= BATCH_SIZE_THRESHOLD ||
-        now - this.lastFlushTime >= BATCH_TIME_THRESHOLD_MS;
-
-      if (shouldFlush) {
+      // Only flush when batch size threshold is reached
+      // Time-based flushing is handled by the RAF loop calling flush() per frame
+      if (this.textureInstanceBuffer.count >= BATCH_SIZE_THRESHOLD) {
         this.flushTextureBatch();
-        this.lastFlushTime = now;
       }
       return;
     }
@@ -356,15 +348,11 @@ export class GPUStrokeAccumulator {
     this.expandDirtyRect(params.x, params.y, radius, params.hardness);
     this.dabsSinceLastFlush++;
 
-    // Check if batch should be flushed
-    const now = performance.now();
-    const shouldFlush =
-      this.instanceBuffer.count >= BATCH_SIZE_THRESHOLD ||
-      now - this.lastFlushTime >= BATCH_TIME_THRESHOLD_MS;
-
-    if (shouldFlush) {
+    // Only flush when batch size threshold is reached
+    // Time-based flushing is handled by the RAF loop calling flush() per frame
+    // This prevents splitting dabs from a single processPoint() into multiple batches
+    if (this.instanceBuffer.count >= BATCH_SIZE_THRESHOLD) {
       this.flushBatch();
-      this.lastFlushTime = now;
     }
   }
 
