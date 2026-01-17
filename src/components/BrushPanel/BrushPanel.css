@@ -175,3 +175,18 @@
   background: var(--bg-primary);
   border-radius: 2px;
 }
+
+/* Selected preset highlight */
+.abr-preset-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Default round brush icon */
+.abr-preset-round-icon {
+  width: 70%;
+  height: 70%;
+  margin: auto;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--text-primary) 0%, var(--text-primary) 40%, transparent 70%);
+}

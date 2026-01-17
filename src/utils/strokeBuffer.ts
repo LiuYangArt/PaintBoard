@@ -277,14 +277,12 @@ export class StrokeAccumulator {
 
     // Texture brush path - use TextureMaskCache for sampled brushes
     if (texture) {
-      // Ensure texture is loaded
-      if (!this.textureMaskCache.hasTexture()) {
-        // Try sync loading first (works if image is cached)
-        if (!this.textureMaskCache.setTextureSync(texture)) {
-          // Async loading - skip this dab (texture will be ready for next)
-          void this.textureMaskCache.setTexture(texture);
-          return;
-        }
+      // Always try to set texture - TextureMaskCache handles change detection internally
+      // This ensures we switch to the new texture when brush preset changes
+      if (!this.textureMaskCache.setTextureSync(texture)) {
+        // Async loading - skip this dab (texture will be ready for next)
+        void this.textureMaskCache.setTexture(texture);
+        return;
       }
 
       const textureParams = { size, roundness, angle };

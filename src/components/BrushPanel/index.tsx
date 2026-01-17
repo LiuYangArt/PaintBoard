@@ -123,8 +123,26 @@ function SliderRow({
   );
 }
 
+/** Default procedural brush preset (always first in the list) */
+const DEFAULT_ROUND_BRUSH: BrushPreset = {
+  id: '__default_round__',
+  name: 'Round Brush',
+  diameter: 20,
+  spacing: 25,
+  hardness: 100,
+  angle: 0,
+  roundness: 100,
+  hasTexture: false,
+  textureData: null,
+  textureWidth: null,
+  textureHeight: null,
+  sizePressure: true,
+  opacityPressure: false,
+};
+
 export function BrushPanel(): JSX.Element {
   const [importedPresets, setImportedPresets] = useState<BrushPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(DEFAULT_ROUND_BRUSH.id);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -192,6 +210,9 @@ export function BrushPanel(): JSX.Element {
 
   /** Apply preset to current brush settings */
   const applyPreset = (preset: BrushPreset) => {
+    // Update selected preset ID for visual feedback
+    setSelectedPresetId(preset.id);
+
     setBrushSize(Math.round(preset.diameter));
     setBrushHardness(Math.round(preset.hardness));
     setBrushSpacing(preset.spacing / 100);
@@ -391,28 +412,36 @@ export function BrushPanel(): JSX.Element {
 
         {importError && <div className="abr-error">{importError}</div>}
 
-        {importedPresets.length > 0 && (
-          <div className="abr-preset-grid">
-            {importedPresets.map((preset) => (
-              <button
-                key={preset.id}
-                className="abr-preset-item"
-                onClick={() => applyPreset(preset)}
-                title={`${preset.name}\n${preset.diameter}px, ${preset.hardness}% hardness`}
-              >
-                {preset.hasTexture && preset.textureData ? (
-                  <img
-                    src={`data:image/png;base64,${preset.textureData}`}
-                    alt={preset.name}
-                    className="abr-preset-texture"
-                  />
-                ) : (
-                  <div className="abr-preset-placeholder">{Math.round(preset.diameter)}</div>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="abr-preset-grid">
+          {/* Default round brush - always first */}
+          <button
+            className={`abr-preset-item ${selectedPresetId === DEFAULT_ROUND_BRUSH.id ? 'selected' : ''}`}
+            onClick={() => applyPreset(DEFAULT_ROUND_BRUSH)}
+            title="Round Brush (Default)\nProcedural brush with soft edges"
+          >
+            <div className="abr-preset-round-icon" />
+          </button>
+
+          {/* Imported presets */}
+          {importedPresets.map((preset) => (
+            <button
+              key={preset.id}
+              className={`abr-preset-item ${selectedPresetId === preset.id ? 'selected' : ''}`}
+              onClick={() => applyPreset(preset)}
+              title={`${preset.name}\n${preset.diameter}px, ${preset.hardness}% hardness`}
+            >
+              {preset.hasTexture && preset.textureData ? (
+                <img
+                  src={`data:image/png;base64,${preset.textureData}`}
+                  alt={preset.name}
+                  className="abr-preset-texture"
+                />
+              ) : (
+                <div className="abr-preset-placeholder">{Math.round(preset.diameter)}</div>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

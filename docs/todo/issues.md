@@ -20,6 +20,11 @@
 
 ---
 
+photoshop 笔刷关键参数
+
+buildup
+笔刷戳在原地，即使只持续输入相同压感， 也会持续变深（叠加）. 但是应该有个threshold， 可能跟当前压感相关（例如特别轻的输入时，不会给你叠到满）,或者可能是在同一个点buildup的次数限制。 我测试感觉是笔刷不动， 且持续输入的压感在差不多的一个范围内时， build up 最多叠加三次
+
 增加wintab/windows ink切换
 
 ui 模块化， dockable ui panels
