@@ -99,3 +99,94 @@
   outline: none;
   border-color: var(--accent);
 }
+
+/* ABR Import Section */
+.abr-import-btn {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.abr-import-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.abr-import-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.abr-error {
+  font-size: 11px;
+  color: #e74c3c;
+  padding: 4px 8px;
+  background: rgba(231, 76, 60, 0.1);
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.abr-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.abr-preset-item {
+  aspect-ratio: 1;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  overflow: hidden;
+}
+
+.abr-preset-item:hover {
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+.abr-preset-texture {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: invert(1);
+}
+
+.abr-preset-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border-radius: 2px;
+}
+
+/* Selected preset highlight */
+.abr-preset-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Default round brush icon */
+.abr-preset-round-icon {
+  width: 70%;
+  height: 70%;
+  margin: auto;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--text-primary) 0%, var(--text-primary) 40%, transparent 70%);
+}

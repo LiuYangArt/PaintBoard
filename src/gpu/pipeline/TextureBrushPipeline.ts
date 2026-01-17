@@ -1,33 +1,23 @@
 /**
- * BrushPipeline - WebGPU render pipeline for parametric brush dab rendering
+ * TextureBrushPipeline - WebGPU render pipeline for texture-based brush rendering
  *
  * Extends BaseBrushPipeline with:
- * - Procedural brush shape generation (hardness-controlled Gaussian falloff)
- * - Gaussian LUT storage buffer for erf approximation
+ * - Texture sampling from imported brush tips (ABR files)
+ * - Brush texture + sampler binding
  *
- * Uses brush.wgsl shader for soft/hard brush rendering with Alpha Darken blending.
+ * Uses textureBrush.wgsl shader for texture sampling with Alpha Darken blending.
  */
 
 import { BaseBrushPipeline } from './BaseBrushPipeline';
-import { DAB_INSTANCE_SIZE } from '../types';
-import { erfLUT } from '@/utils/maskCache';
+import type { GPUBrushTexture } from '../resources/TextureAtlas';
+import { TEXTURE_DAB_INSTANCE_SIZE } from '../types';
 
-// Import shader source (Vite handles ?raw imports)
-import brushShaderCode from '../shaders/brush.wgsl?raw';
+// Import shader source
+import textureBrushShaderCode from '../shaders/textureBrush.wgsl?raw';
 
-export class BrushPipeline extends BaseBrushPipeline {
-  private gaussianBuffer: GPUBuffer;
-
+export class TextureBrushPipeline extends BaseBrushPipeline {
   constructor(device: GPUDevice) {
     super(device);
-
-    // Create Gaussian LUT buffer before initialize() since createBindGroupLayout needs it
-    this.gaussianBuffer = this.createBuffer(
-      'Gaussian LUT',
-      erfLUT.byteLength,
-      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      erfLUT
-    );
 
     // Initialize pipeline (calls abstract methods)
     this.initialize();
@@ -38,16 +28,16 @@ export class BrushPipeline extends BaseBrushPipeline {
   // ============================================================================
 
   protected getShaderCode(): string {
-    return brushShaderCode;
+    return textureBrushShaderCode;
   }
 
   protected getPipelineLabel(): string {
-    return 'Brush';
+    return 'Texture Brush';
   }
 
   protected createBindGroupLayout(): GPUBindGroupLayout {
     return this.device.createBindGroupLayout({
-      label: 'Brush Bind Group Layout',
+      label: 'Texture Brush Bind Group Layout',
       entries: [
         {
           // Uniforms (canvas size, blend mode)
@@ -59,13 +49,19 @@ export class BrushPipeline extends BaseBrushPipeline {
           // Stroke source texture (previous frame for Alpha Darken read)
           binding: 1,
           visibility: GPUShaderStage.FRAGMENT,
-          texture: { sampleType: 'unfilterable-float' }, // rgba32float requires unfilterable-float
+          texture: { sampleType: 'unfilterable-float' }, // rgba32float
         },
         {
-          // Gaussian LUT storage buffer
+          // Brush tip texture
+          binding: 2,
+          visibility: GPUShaderStage.FRAGMENT,
+          texture: { sampleType: 'float' }, // rgba8unorm
+        },
+        {
+          // Brush texture sampler
           binding: 3,
           visibility: GPUShaderStage.FRAGMENT,
-          buffer: { type: 'read-only-storage' },
+          sampler: { type: 'filtering' },
         },
       ],
     });
@@ -73,8 +69,9 @@ export class BrushPipeline extends BaseBrushPipeline {
 
   protected getInstanceBufferLayout(): GPUVertexBufferLayout {
     return {
-      // Instance buffer layout (per-instance data, 36 bytes)
-      arrayStride: DAB_INSTANCE_SIZE,
+      // Instance buffer layout (per-instance data, 48 bytes)
+      // Layout: x, y, size, roundness, angle, r, g, b, dabOpacity, flow, texWidth, texHeight
+      arrayStride: TEXTURE_DAB_INSTANCE_SIZE,
       stepMode: 'instance',
       attributes: [
         {
@@ -90,28 +87,40 @@ export class BrushPipeline extends BaseBrushPipeline {
           format: 'float32',
         },
         {
-          // hardness: f32
+          // roundness: f32
           shaderLocation: 2,
           offset: 12,
           format: 'float32',
         },
         {
-          // color: vec3<f32> (r, g, b)
+          // angle: f32
           shaderLocation: 3,
           offset: 16,
+          format: 'float32',
+        },
+        {
+          // color: vec3<f32> (r, g, b)
+          shaderLocation: 4,
+          offset: 20,
           format: 'float32x3',
         },
         {
-          // dabOpacity: f32 (alpha ceiling)
-          shaderLocation: 4,
-          offset: 28,
+          // dabOpacity: f32
+          shaderLocation: 5,
+          offset: 32,
           format: 'float32',
         },
         {
           // flow: f32
-          shaderLocation: 5,
-          offset: 32,
+          shaderLocation: 6,
+          offset: 36,
           format: 'float32',
+        },
+        {
+          // tex_size: vec2<f32>
+          shaderLocation: 7,
+          offset: 40,
+          format: 'float32x2',
         },
       ],
     };
@@ -123,11 +132,11 @@ export class BrushPipeline extends BaseBrushPipeline {
 
   /**
    * Create a bind group for rendering
-   * Must be called each frame with the current source texture
+   * Must be called each frame with current source texture and brush texture
    */
-  createBindGroup(sourceTexture: GPUTexture): GPUBindGroup {
+  createBindGroup(sourceTexture: GPUTexture, brushTexture: GPUBrushTexture): GPUBindGroup {
     return this.device.createBindGroup({
-      label: 'Brush Bind Group',
+      label: 'Texture Brush Bind Group',
       layout: this.bindGroupLayout,
       entries: [
         {
@@ -139,18 +148,14 @@ export class BrushPipeline extends BaseBrushPipeline {
           resource: sourceTexture.createView(),
         },
         {
+          binding: 2,
+          resource: brushTexture.view,
+        },
+        {
           binding: 3,
-          resource: { buffer: this.gaussianBuffer },
+          resource: brushTexture.sampler,
         },
       ],
     });
-  }
-
-  /**
-   * Release GPU resources
-   */
-  override destroy(): void {
-    super.destroy();
-    this.gaussianBuffer.destroy();
   }
 }

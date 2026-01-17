@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   useToolStore,
   PressureCurve,
@@ -5,8 +8,26 @@ import {
   RenderMode,
   ColorBlendMode,
   GPURenderScaleMode,
+  BrushTexture,
 } from '@/stores/tool';
 import './BrushPanel.css';
+
+/** Brush preset from ABR import */
+interface BrushPreset {
+  id: string;
+  name: string;
+  diameter: number;
+  spacing: number;
+  hardness: number;
+  angle: number;
+  roundness: number;
+  hasTexture: boolean;
+  textureData: string | null;
+  textureWidth: number | null;
+  textureHeight: number | null;
+  sizePressure: boolean;
+  opacityPressure: boolean;
+}
 
 const PRESSURE_CURVES: { id: PressureCurve; label: string }[] = [
   { id: 'linear', label: 'Linear' },
@@ -102,7 +123,29 @@ function SliderRow({
   );
 }
 
+/** Default procedural brush preset (always first in the list) */
+const DEFAULT_ROUND_BRUSH: BrushPreset = {
+  id: '__default_round__',
+  name: 'Round Brush',
+  diameter: 20,
+  spacing: 25,
+  hardness: 100,
+  angle: 0,
+  roundness: 100,
+  hasTexture: false,
+  textureData: null,
+  textureWidth: null,
+  textureHeight: null,
+  sizePressure: true,
+  opacityPressure: false,
+};
+
 export function BrushPanel(): JSX.Element {
+  const [importedPresets, setImportedPresets] = useState<BrushPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(DEFAULT_ROUND_BRUSH.id);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
   const {
     brushSize,
     setBrushSize,
@@ -134,7 +177,65 @@ export function BrushPanel(): JSX.Element {
     setColorBlendMode,
     gpuRenderScaleMode,
     setGpuRenderScaleMode,
+    setBrushTexture,
+    clearBrushTexture,
   } = useToolStore();
+
+  /** Import ABR file */
+  const handleImportABR = async () => {
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: 'Photoshop Brushes', extensions: ['abr'] }],
+      });
+
+      if (selected) {
+        const presets = await invoke<BrushPreset[]>('import_abr_file', {
+          path: selected,
+        });
+        setImportedPresets(presets);
+        console.log('Imported', presets.length, 'brushes');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setImportError(message);
+      console.error('ABR import failed:', err);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  /** Apply preset to current brush settings */
+  const applyPreset = (preset: BrushPreset) => {
+    // Update selected preset ID for visual feedback
+    setSelectedPresetId(preset.id);
+
+    setBrushSize(Math.round(preset.diameter));
+    setBrushHardness(Math.round(preset.hardness));
+    setBrushSpacing(preset.spacing / 100);
+    setBrushRoundness(Math.round(preset.roundness));
+    setBrushAngle(Math.round(preset.angle));
+
+    // Apply texture if preset has one
+    if (preset.hasTexture && preset.textureData && preset.textureWidth && preset.textureHeight) {
+      const texture: BrushTexture = {
+        data: preset.textureData,
+        width: preset.textureWidth,
+        height: preset.textureHeight,
+      };
+      setBrushTexture(texture);
+      console.log(
+        `Applied textured preset: ${preset.name} ${preset.textureWidth}x${preset.textureHeight}`
+      );
+    } else {
+      // Clear texture for procedural brushes
+      clearBrushTexture();
+      console.log('Applied procedural preset:', preset.name);
+    }
+  };
 
   return (
     <div className="brush-panel">
@@ -298,6 +399,47 @@ export function BrushPanel(): JSX.Element {
             </select>
           </div>
         )}
+      </div>
+
+      {/* ABR Import Section */}
+      <div className="brush-panel-section">
+        <h4>Brush Presets</h4>
+        <button className="abr-import-btn" onClick={handleImportABR} disabled={isImporting}>
+          {isImporting ? 'Importing...' : 'Import ABR'}
+        </button>
+
+        {importError && <div className="abr-error">{importError}</div>}
+
+        <div className="abr-preset-grid">
+          {/* Default round brush - always first */}
+          <button
+            className={`abr-preset-item ${selectedPresetId === DEFAULT_ROUND_BRUSH.id ? 'selected' : ''}`}
+            onClick={() => applyPreset(DEFAULT_ROUND_BRUSH)}
+            title="Round Brush (Default)\nProcedural brush with soft edges"
+          >
+            <div className="abr-preset-round-icon" />
+          </button>
+
+          {/* Imported presets */}
+          {importedPresets.map((preset) => (
+            <button
+              key={preset.id}
+              className={`abr-preset-item ${selectedPresetId === preset.id ? 'selected' : ''}`}
+              onClick={() => applyPreset(preset)}
+              title={`${preset.name}\n${preset.diameter}px, ${preset.hardness}% hardness`}
+            >
+              {preset.hasTexture && preset.textureData ? (
+                <img
+                  src={`data:image/png;base64,${preset.textureData}`}
+                  alt={preset.name}
+                  className="abr-preset-texture"
+                />
+              ) : (
+                <div className="abr-preset-placeholder">{Math.round(preset.diameter)}</div>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

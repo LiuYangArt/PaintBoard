@@ -1,6 +1,6 @@
 # PaintBoard 开发路线图
 
-> 版本: 0.1.0 | 创建日期: 2026-01-11
+> 版本: 0.2.1 | 更新日期: 2026-01-16 | 创建日期: 2026-01-11
 
 ## 项目概览
 
@@ -23,7 +23,7 @@
 
 ---
 
-## M0: 数位板输入 (Tablet Input) 🔥 最高优先级
+## M0: 数位板输入 (Tablet Input) ✅ 已完成
 
 **目标**: 实现 WinTab 原生支持，为 Wacom 等专业数位板提供低延迟输入
 
@@ -66,7 +66,7 @@
 #### 0.3 设置 UI
 
 - [x] 添加"数位板设置"面板
-- [ ] 数位板 API 选择（WinTab / PointerEvent）
+- [x] 数位板 API 选择（WinTab / PointerEvent）- 通过后端自动选择
 - [x] 当前连接设备信息显示
 - [x] 压感测试区域（实时显示压感值）
 - [ ] 设置持久化到本地配置
@@ -80,9 +80,12 @@
 
 ---
 
-## M1: 基础绘画 (Foundation) 🚧 进行中
+## M1: 基础绘画 (Foundation) ✅ 已完成
 
 **目标**: 在画布上实现基本的压感绘画功能
+
+> [!NOTE]
+> 核心绘画功能已完成，放大镜工具双击重置功能作为低优先级遗留项
 
 ### 任务清单
 
@@ -127,11 +130,12 @@
 - [x] 笔刷和橡皮擦独立大小设置
 - [x] 笔刷大小圆圈光标指示
 
-#### 1.6 放大镜工具 (Zoom Tool) 🔥 高优先级
+#### 1.6 放大镜工具 (Zoom Tool) ✅ 已完成
 
-- [ ] 快捷键 `Z` 切换/暂时激活
-- [ ] 交互：按住鼠标左键往右拖拽放大，往左拖拽缩小 (Scrubby Zoom)
-- [ ] 工具栏添加放大镜图标
+- [x] 快捷键 `Z` 切换/暂时激活
+- [x] 交互：按住鼠标左键往右拖拽放大，往左拖拽缩小 (Scrubby Zoom)
+- [x] 工具栏添加放大镜图标
+- [ ] 双击工具栏放大镜，reset zoom to 100% (低优先级)
 
 ### 验收标准
 
@@ -156,7 +160,7 @@
 #### 2.1 图层数据结构
 
 - [x] 完善 Zustand document store 图层管理
-- [ ] 实现图层树结构（支持图层组）
+- [ ] 实现图层树结构（支持图层组）- 移至 M7
 - [x] 添加图层 ID 生成和管理
 
 #### 2.2 图层渲染
@@ -200,15 +204,32 @@
 
 ---
 
-## M3: 笔刷系统 (Brushes)
+## M3: 笔刷系统 (Brushes) 🚧 进行中
 
 **目标**: 实现兼容 Photoshop ABR 的专业笔刷系统，优先保证手感。
 参考设计：`docs/design/m3-brush-system.md` (Index)
 参考文件：`@abr/tahraart.abr`
 
+> [!NOTE]
+> Phase 1-2 核心功能已完成，ABR 解析器已实现，笔刷预设 UI 基础版已完成
+
+### 渲染后端策略
+
+> **GPU 优先，CPU 降级**
+>
+> 笔刷渲染以 GPU (WebGPU) 为主要实现：
+>
+> | 笔刷类型 | GPU 实现 | CPU 降级 |
+> |----------|----------|----------|
+> | 参数化笔刷 | `GPUStrokeAccumulator` + `brush.wgsl` | `strokeBuffer.ts` + `maskCache.ts` |
+> | 采样笔刷 | 扩展 GPU 管线，添加纹理图集采样 | 最小实现，仅保证可用 |
+>
+> CPU 实现仅作为 WebGPU 不可用时的降级方案，不追求功能对等。
+> 新功能（如采样笔刷）优先在 GPU 实现，CPU 按需补充。
+
 ### 任务清单
 
-#### 3.1 核心渲染管线 (Phase 1) 🔥 最高优先级
+#### 3.1 核心渲染管线 (Phase 1) ✅ 已完成
 
 > 手感正确性核心， Flow/Opacity 分离
 > 详见：[`docs/design/brush-system/01_rendering_pipeline.md`](../../design/brush-system/01_rendering_pipeline.md)
@@ -219,7 +240,7 @@
 - [x] UI 界面，brush size/flow/opacity 各自有独立的slider。 slider旁边有单独的压感overide开关，开启后此参数必受压感影响。
 <!-- - [ ] 实现基础混合模式 (Normal, Multiply) -->
 
-#### 3.2 笔刷引擎扩展 (Phase 2)
+#### 3.2 笔刷引擎扩展 (Phase 2) ✅ 基本完成
 
 > 详见：[`docs/design/brush-system/02_brush_engine.md`](../../design/brush-system/02_brush_engine.md)
 
@@ -230,24 +251,24 @@
 - [x] 实现动态参数系统 (压感/倾斜 -> 大小/透明度) - 基础版已实现
 - [ ] 纹理缓存系统
 
-#### 3.3 ABR 解析与兼容 (Phase 3)
+#### 3.3 ABR 解析与兼容 (Phase 3) ✅ 已完成
 
 > 详见：[`docs/design/brush-system/03_abr_parser.md`](../../design/brush-system/03_abr_parser.md)
 
-- [ ] 移植 psd-tools/Krita 解析逻辑
-- [ ] 实现递归 ActionDescriptor 解析
-- [ ] 建立默认值回退机制 (Fault Tolerance)
-- [ ] 实现 8BIMsamp 纹理提取与归一化
-- [ ] 编写 ABR 导入器 (Tauri Command)
+- [x] 移植 psd-tools/Krita 解析逻辑
+- [ ] 实现递归 ActionDescriptor 解析 (低优先级)
+- [x] 建立默认值回退机制 (Fault Tolerance)
+- [x] 实现 8BIMsamp 纹理提取与归一化
+- [x] 编写 ABR 导入器 (Tauri Command)
 
-#### 3.4 笔刷预设 UI (Phase 4)
+#### 3.4 笔刷预设 UI (Phase 4) ✅ 基础版完成
 
 > 详见：[`docs/design/brush-system/04_ui_ux.md`](../../design/brush-system/04_ui_ux.md)
 
-- [ ] 笔刷面板框架
-- [ ] 预设网格展示 (缩略图)
+- [x] 笔刷面板框架
+- [x] 预设网格展示 (缩略图)
 - [ ] 详细参数编辑器 (展开式)
-- [ ] 导入 ABR 对话框
+- [x] 导入 ABR 对话框
 
 #### 3.5 性能与高级特性 (Phase 5/6)
 
@@ -383,16 +404,25 @@
 
 #### 6.4 性能优化
 
-- [ ] 迁移到 WebGPU 渲染
+- [x] 迁移到 WebGPU 渲染 (GPU 笔刷引擎已实现)
+- [x] 输入延迟优化:
+  - [x] `desynchronized` canvas
+  - [x] `pointerrawupdate` 低延迟输入 (Q1)
+  - [x] 硬件光标支持 ≤128px (Q2)
+  - [x] GPU Timestamp Query 性能剖析 (Q3)
+  - [x] 批量处理 RAF 循环 + inputQueue
+  - [x] 动态降采样 (Q4)
+  - [x] Dirty Rect 局部合成 (M2)
 - [ ] 大画布分块渲染（Tile-based）
 - [ ] 图层缓存优化
 - [ ] 内存使用监控
 
 #### 6.5 Rust 输入管线
 
+- [x] WinTab 后端实现 (wintab_backend.rs)
 - [ ] 集成 octotablet 直接采集
-- [ ] 输入预测（减少感知延迟）
-- [ ] 高频输入处理（> 200Hz）
+- [x] 输入预测（减少感知延迟）→ 已在 M0 实现
+- [x] 高频输入处理（> 200Hz）→ 已在 M0 实现
 
 #### 6.6 快捷键系统
 
@@ -427,7 +457,7 @@
 
 ### 任务清单
 
-#### 7.1 悬浮面板系统
+#### 7.1 悬浮面板系统 ✅ 已完成
 
 - [x] 悬浮面板基础组件:
   - [x] 可拖拽标题栏
@@ -488,8 +518,12 @@
 
 - [ ] 补充单元测试覆盖率到 80%
 - [ ] 添加集成测试
-- [x] 性能基准测试系统 (Done #59) - 详见 `docs/design/benchmark-plan.md`
-
+- [x] 性能基准测试系统 - 详见 `docs/design/done/benchmark-plan.md`
+  - [x] LatencyProfiler (分段剖析)
+  - [x] FPSCounter + LagometerMonitor
+  - [x] GPU Timestamp Query
+  - [x] BenchmarkRunner 自动化
+- [x] 视觉一致性测试 - 详见 `tests/visual/gpu-cpu-comparison.html`
 - [ ] 修复 Clippy 警告
 
 ### 文档
@@ -508,28 +542,27 @@
 
 ## 开发优先级建议
 
-### 第一阶段：最小可用产品 (MVP)
+### 第一阶段：最小可用产品 (MVP) ✅ 已完成
 
-0. **M0: 数位板输入** - 🔥 WinTab 原生支持（最高优先级）
-1. **M1: 基础绘画** - 核心体验 🚧 进行中
-   - 新增 1.5：笔刷大小快捷键 `[` `]` + Alt 取色 + 橡皮擦
-   - 新增 1.6：放大镜工具 (快捷键 Z + 拖拽缩放)
-2. **M2.1-2.2: 基础图层** - 分层绘画
-3. **M3.1-3.2: 基础笔刷** - 笔刷调节
+0. **M0: 数位板输入** - ✅ WinTab 原生支持已实现
+1. **M1: 基础绘画** - ✅ 核心体验已完成
+   - ✅ 笔刷大小快捷键 `[` `]` + Alt 取色 + 橡皮擦
+   - ✅ 放大镜工具 (Z键) - Scrubby Zoom 已实现
+2. **M2.1-2.2: 基础图层** - ✅ 分层绘画已完成
+3. **M3.1-3.2: 基础笔刷** - ✅ Flow/Opacity 三级管线已实现
 
-### 第二阶段：功能完善
+### 第二阶段：功能完善 🚧 当前阶段
 
-4. **M2.3-2.4: 混合模式 + UI**
-5. **M3.3-3.5: 高级笔刷**
-6. **M5.1-5.3: 文件保存**
-7. **M7.1-7.2: 悬浮面板 + Docking**
+4. **M3.3-3.5: 高级笔刷** - ABR 导入、笔刷预设
+5. **M5.1-5.3: 文件保存** - 项目保存/加载
+6. **M7.2: Docking 系统** - 专业级面板布局
 
 ### 第三阶段：专业化
 
-8. **M4: 选区系统**
-9. **M5.4: PSD 支持**
-10. **M6: 专业特性**
-11. **M7.3-7.4: 布局管理 + 响应式**
+7. **M4: 选区系统**
+8. **M5.4: PSD 支持**
+9. **M6: 专业特性** (部分已完成)
+10. **M7.3-7.4: 布局管理 + 响应式**
 
 ---
 

@@ -1,0 +1,38 @@
+//! ABR (Adobe Brush) file parser
+//!
+//! This module provides functionality to parse Photoshop ABR brush files,
+//! extracting brush presets including tip textures and parameters.
+//!
+//! # Supported Versions
+//!
+//! - V1/V2: Old format (Photoshop 5-6)
+//! - V6/V7/V10: New format (Photoshop 7+ and Creative Cloud)
+//!
+//! # Example
+//!
+//! ```ignore
+//! use paintboard_lib::abr::AbrParser;
+//!
+//! let data = std::fs::read("brush.abr")?;
+//! let abr_file = AbrParser::parse(&data)?;
+//!
+//! for brush in abr_file.brushes {
+//!     println!("Brush: {} ({}x{})",
+//!         brush.name,
+//!         brush.tip_image.as_ref().map(|i| i.width).unwrap_or(0),
+//!         brush.tip_image.as_ref().map(|i| i.height).unwrap_or(0)
+//!     );
+//! }
+//! ```
+
+mod defaults;
+mod error;
+mod parser;
+mod samp;
+mod types;
+
+pub use defaults::AbrDefaults;
+pub use error::AbrError;
+pub use parser::AbrParser;
+pub use samp::normalize_brush_texture;
+pub use types::{AbrBrush, AbrDynamics, AbrFile, AbrVersion, BrushPreset, GrayscaleImage};
