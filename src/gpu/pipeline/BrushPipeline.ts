@@ -117,19 +117,6 @@ export class BrushPipeline extends BaseBrushPipeline {
     };
   }
 
-  protected createPipeline(): GPURenderPipeline {
-    const shaderModule = this.createShaderModule();
-
-    const pipelineLayout = this.device.createPipelineLayout({
-      label: 'Brush Pipeline Layout',
-      bindGroupLayouts: [this.bindGroupLayout],
-    });
-
-    return this.device.createRenderPipeline(
-      this.createBasePipelineDescriptor(shaderModule, pipelineLayout)
-    );
-  }
-
   // ============================================================================
   // Public methods
   // ============================================================================

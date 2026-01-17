@@ -46,8 +46,18 @@ export abstract class BaseBrushPipeline {
 
   /**
    * Create the render pipeline with shader and instance buffer layout
+   * Uses shared logic - subclasses only need to implement getShaderCode() and getInstanceBufferLayout()
    */
-  protected abstract createPipeline(): GPURenderPipeline;
+  protected createPipeline(): GPURenderPipeline {
+    const shaderModule = this.createShaderModule();
+    const pipelineLayout = this.device.createPipelineLayout({
+      label: `${this.getPipelineLabel()} Pipeline Layout`,
+      bindGroupLayouts: [this.bindGroupLayout],
+    });
+    return this.device.createRenderPipeline(
+      this.createBasePipelineDescriptor(shaderModule, pipelineLayout)
+    );
+  }
 
   /**
    * Get the shader source code
