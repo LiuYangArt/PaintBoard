@@ -15,14 +15,22 @@
 // Data Structures
 // ============================================================================
 
+// IMPORTANT: This struct must match the TypeScript packDabData() layout exactly!
+// Using individual f32 fields instead of vec3 to avoid WGSL alignment issues.
+// Total: 12 floats = 48 bytes per dab (no implicit padding)
 struct DabData {
-  center: vec2<f32>,      // Dab center position (absolute coordinates)
-  radius: f32,            // Dab radius (not diameter)
-  hardness: f32,          // Hardness 0-1
-  color: vec3<f32>,       // RGB color (0-1, sRGB space)
-  dab_opacity: f32,       // Alpha Darken ceiling
-  flow: f32,              // Flow multiplier
-  _padding: vec3<f32>,    // Align to 48 bytes (12 floats)
+  center_x: f32,          // Dab center X (offset 0)
+  center_y: f32,          // Dab center Y (offset 4)
+  radius: f32,            // Dab radius (offset 8)
+  hardness: f32,          // Hardness 0-1 (offset 12)
+  color_r: f32,           // RGB color R (offset 16)
+  color_g: f32,           // RGB color G (offset 20)
+  color_b: f32,           // RGB color B (offset 24)
+  dab_opacity: f32,       // Alpha Darken ceiling (offset 28)
+  flow: f32,              // Flow multiplier (offset 32)
+  _padding0: f32,         // Padding (offset 36)
+  _padding1: f32,         // Padding (offset 40)
+  _padding2: f32,         // Padding (offset 44)
 };
 
 struct Uniforms {
@@ -105,15 +113,16 @@ fn alpha_darken_blend(dst: vec4<f32>, src_color: vec3<f32>, src_alpha: f32, ceil
 // Compute Mask (matches brush.wgsl soft/hard brush logic)
 // ============================================================================
 fn compute_mask(dist: f32, radius: f32, hardness: f32) -> f32 {
-  if (dist > radius) {
-    return 0.0;
-  }
-
-  // Normalized distance (0-1 within radius)
+  // Normalized distance (0-1 within radius, can exceed 1.0 for soft brushes)
   let normalized_dist = dist / radius;
 
   if (hardness >= 0.99) {
     // Hard brush: 1px anti-aliased edge
+    // Early exit for pixels clearly outside
+    if (dist > radius + 1.0) {
+      return 0.0;
+    }
+
     let pixel_size = 1.0 / radius;
     let half_pixel = pixel_size * 0.5;
     let edge_dist = normalized_dist - 1.0;
@@ -127,6 +136,9 @@ fn compute_mask(dist: f32, radius: f32, hardness: f32) -> f32 {
     }
   } else {
     // Soft brush: Gaussian (erf-based) falloff
+    // NOTE: Do NOT early-exit here - Gaussian extends beyond radius!
+    // The caller already did effective_radius culling.
+
     let fade = (1.0 - hardness) * 2.0;
     let safe_fade = max(0.001, fade);
 
@@ -137,9 +149,8 @@ fn compute_mask(dist: f32, radius: f32, hardness: f32) -> f32 {
     // Distance factor for Gaussian falloff
     let distfactor = (SQRT_2 * 12500.0) / (6761.0 * safe_fade * radius);
 
-    // Physical distance then scale
-    let physical_dist = normalized_dist * radius;
-    let scaled_dist = physical_dist * distfactor;
+    // Physical distance (use actual dist, not normalized * radius to avoid precision loss)
+    let scaled_dist = dist * distfactor;
     let val = alphafactor * (erf_approx(scaled_dist + center) - erf_approx(scaled_dist - center));
     return saturate(val);
   }
@@ -217,9 +228,13 @@ fn main(
   for (var i = 0u; i < shared_dab_count; i++) {
     let dab = shared_dabs[i];
 
+    // Reconstruct vec2/vec3 from individual f32 fields
+    let dab_center = vec2<f32>(dab.center_x, dab.center_y);
+    let dab_color = vec3<f32>(dab.color_r, dab.color_g, dab.color_b);
+
     // Fast distance check (early culling)
     let effective_radius = calculate_effective_radius(dab.radius, dab.hardness);
-    let dist = distance(pixel, dab.center);
+    let dist = distance(pixel, dab_center);
     if (dist > effective_radius) {
       continue;
     }
@@ -233,7 +248,7 @@ fn main(
     let src_alpha = mask * dab.flow;
 
     // Alpha Darken blend
-    color = alpha_darken_blend(color, dab.color, src_alpha, dab.dab_opacity);
+    color = alpha_darken_blend(color, dab_color, src_alpha, dab.dab_opacity);
   }
 
   // -------------------------------------------------------------------------
