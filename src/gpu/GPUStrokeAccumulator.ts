@@ -13,18 +13,13 @@
 
 import type { Rect } from '@/utils/strokeBuffer';
 import type { GPUDabParams, DabInstanceData, TextureDabInstanceData } from './types';
-import {
-  BATCH_SIZE_THRESHOLD,
-  BATCH_TIME_THRESHOLD_MS,
-  DAB_INSTANCE_SIZE,
-  TEXTURE_DAB_INSTANCE_SIZE,
-  calculateEffectiveRadius,
-} from './types';
+import { DAB_INSTANCE_SIZE, TEXTURE_DAB_INSTANCE_SIZE, calculateEffectiveRadius } from './types';
 import { PingPongBuffer } from './resources/PingPongBuffer';
 import { InstanceBuffer } from './resources/InstanceBuffer';
 import { TextureInstanceBuffer } from './resources/TextureInstanceBuffer';
 import { BrushPipeline } from './pipeline/BrushPipeline';
 import { TextureBrushPipeline } from './pipeline/TextureBrushPipeline';
+import { ComputeBrushPipeline } from './pipeline/ComputeBrushPipeline';
 import { TextureAtlas } from './resources/TextureAtlas';
 import { GPUProfiler, CPUTimer } from './profiler';
 import { useToolStore, type ColorBlendMode, type GPURenderScaleMode } from '@/stores/tool';
@@ -34,6 +29,8 @@ export class GPUStrokeAccumulator {
   private pingPongBuffer: PingPongBuffer;
   private instanceBuffer: InstanceBuffer;
   private brushPipeline: BrushPipeline;
+  private computeBrushPipeline: ComputeBrushPipeline;
+  private useComputeShader: boolean = true; // Re-enabled for no-bbox test
   private profiler: GPUProfiler;
 
   // Texture brush resources (separate from parametric brush)
@@ -54,7 +51,6 @@ export class GPUStrokeAccumulator {
   private previewCtx: CanvasRenderingContext2D;
 
   // Batch timing control
-  private lastFlushTime: number = 0;
   private dabsSinceLastFlush: number = 0;
 
   // Readback buffer for GPU → CPU transfer
@@ -94,6 +90,8 @@ export class GPUStrokeAccumulator {
     this.instanceBuffer = new InstanceBuffer(device);
     this.brushPipeline = new BrushPipeline(device);
     this.brushPipeline.updateCanvasSize(width, height);
+    this.computeBrushPipeline = new ComputeBrushPipeline(device);
+    this.computeBrushPipeline.updateCanvasSize(width, height);
     this.profiler = new GPUProfiler();
 
     // Initialize texture brush resources
@@ -173,6 +171,10 @@ export class GPUStrokeAccumulator {
       this.pingPongBuffer.textureWidth,
       this.pingPongBuffer.textureHeight
     );
+    this.computeBrushPipeline.updateCanvasSize(
+      this.pingPongBuffer.textureWidth,
+      this.pingPongBuffer.textureHeight
+    );
     this.textureBrushPipeline.updateCanvasSize(
       this.pingPongBuffer.textureWidth,
       this.pingPongBuffer.textureHeight
@@ -192,7 +194,6 @@ export class GPUStrokeAccumulator {
   beginStroke(): void {
     this.clear();
     this.active = true;
-    this.lastFlushTime = performance.now();
     this.dabsSinceLastFlush = 0;
 
     // Clear GPU buffers
@@ -212,6 +213,7 @@ export class GPUStrokeAccumulator {
     const mode = useToolStore.getState().colorBlendMode;
     if (mode !== this.cachedColorBlendMode) {
       this.brushPipeline.updateColorBlendMode(mode);
+      this.computeBrushPipeline.updateColorBlendMode(mode);
       this.textureBrushPipeline.updateColorBlendMode(mode);
       this.cachedColorBlendMode = mode;
     }
@@ -233,6 +235,10 @@ export class GPUStrokeAccumulator {
 
       this.pingPongBuffer.setRenderScale(targetScale);
       this.brushPipeline.updateCanvasSize(
+        this.pingPongBuffer.textureWidth,
+        this.pingPongBuffer.textureHeight
+      );
+      this.computeBrushPipeline.updateCanvasSize(
         this.pingPongBuffer.textureWidth,
         this.pingPongBuffer.textureHeight
       );
@@ -310,16 +316,6 @@ export class GPUStrokeAccumulator {
       this.expandDirtyRectTexture(params.x, params.y, halfSize);
       this.dabsSinceLastFlush++;
 
-      // Check if batch should be flushed
-      const now = performance.now();
-      const shouldFlush =
-        this.textureInstanceBuffer.count >= BATCH_SIZE_THRESHOLD ||
-        now - this.lastFlushTime >= BATCH_TIME_THRESHOLD_MS;
-
-      if (shouldFlush) {
-        this.flushTextureBatch();
-        this.lastFlushTime = now;
-      }
       return;
     }
 
@@ -338,20 +334,10 @@ export class GPUStrokeAccumulator {
     };
 
     this.instanceBuffer.push(dabData);
+
     // Dirty rect is in logical coordinates (for preview canvas)
     this.expandDirtyRect(params.x, params.y, radius, params.hardness);
     this.dabsSinceLastFlush++;
-
-    // Check if batch should be flushed
-    const now = performance.now();
-    const shouldFlush =
-      this.instanceBuffer.count >= BATCH_SIZE_THRESHOLD ||
-      now - this.lastFlushTime >= BATCH_TIME_THRESHOLD_MS;
-
-    if (shouldFlush) {
-      this.flushBatch();
-      this.lastFlushTime = now;
-    }
   }
 
   /**
@@ -389,17 +375,20 @@ export class GPUStrokeAccumulator {
   }
 
   /**
-   * Flush pending dabs to GPU using per-dab loop with optimized partial copies.
-   * Each dab gets its own render pass to ensure correct Alpha Darken accumulation.
+   * Flush pending dabs to GPU using Compute Shader (optimized path)
+   * or per-dab Render Pipeline (fallback path).
    */
   private flushBatch(): void {
-    if (this.instanceBuffer.count === 0) return;
+    if (this.instanceBuffer.count === 0) {
+      return;
+    }
 
     this.cpuTimer.start();
 
     // 1. Get data and upload to GPU
     const dabs = this.instanceBuffer.getDabsData();
     const bbox = this.instanceBuffer.getBoundingBox();
+
     // Flush uploads to GPU and resets the pending/bbox counters
     const { buffer: gpuBatchBuffer } = this.instanceBuffer.flush();
 
@@ -407,10 +396,70 @@ export class GPUStrokeAccumulator {
       label: 'Brush Batch Encoder',
     });
 
-    // 2. Setup scissor
+    // Try compute shader path first
+    if (this.useComputeShader) {
+      // Compute shader: batch all dabs in single dispatch
+      const dr = this.dirtyRect;
+      const scale = this.currentRenderScale;
+
+      // Copy source to dest to preserve previous strokes
+      const copyX = Math.floor(dr.left * scale);
+      const copyY = Math.floor(dr.top * scale);
+      const copyW = Math.ceil((dr.right - dr.left) * scale);
+      const copyH = Math.ceil((dr.bottom - dr.top) * scale);
+      if (copyW > 0 && copyH > 0) {
+        this.pingPongBuffer.copyRect(encoder, copyX, copyY, copyW, copyH);
+      }
+
+      // Single dispatch for all dabs
+      const success = this.computeBrushPipeline.dispatch(
+        encoder,
+        this.pingPongBuffer.source,
+        this.pingPongBuffer.dest,
+        dabs
+      );
+
+      if (success) {
+        // Swap so next flushBatch reads from the updated texture
+        this.pingPongBuffer.swap();
+
+        void this.profiler.resolveTimestamps(encoder);
+        this.device.queue.submit([encoder.finish()]);
+
+        const cpuTime = this.cpuTimer.stop();
+        this.profiler.recordFrame({
+          dabCount: dabs.length,
+          cpuTimeMs: cpuTime,
+        });
+
+        this.previewNeedsUpdate = true;
+        if (!this.previewUpdatePending) {
+          void this.updatePreview();
+        }
+        return;
+      }
+
+      // Compute shader failed, fall through to render pipeline
+      console.warn('[GPUStrokeAccumulator] Compute shader failed, falling back to render pipeline');
+    }
+
+    // Fallback: per-dab render pipeline
+    this.flushBatchLegacy(dabs, gpuBatchBuffer, bbox, encoder);
+  }
+
+  /**
+   * Legacy per-dab render pipeline (fallback when compute shader unavailable)
+   */
+  private flushBatchLegacy(
+    dabs: DabInstanceData[],
+    gpuBatchBuffer: GPUBuffer,
+    bbox: { x: number; y: number; width: number; height: number },
+    encoder: GPUCommandEncoder
+  ): void {
+    // Setup scissor
     const scissor = this.computeScissorRect(bbox);
 
-    // 3. Render loop
+    // Render loop
     let prevDabRect: { x: number; y: number; w: number; h: number } | null = null;
 
     for (let i = 0; i < dabs.length; i++) {
@@ -420,11 +469,15 @@ export class GPUStrokeAccumulator {
       // Partial Copy Logic: Sync Dest with Source
       if (i === 0) {
         // First dab: copy accumulated dirty rect
+        // IMPORTANT: dirtyRect is in logical coordinates, need to scale to texture space
         const dr = this.dirtyRect;
-        const copyW = dr.right - dr.left;
-        const copyH = dr.bottom - dr.top;
+        const scale = this.currentRenderScale;
+        const copyX = Math.floor(dr.left * scale);
+        const copyY = Math.floor(dr.top * scale);
+        const copyW = Math.ceil((dr.right - dr.left) * scale);
+        const copyH = Math.ceil((dr.bottom - dr.top) * scale);
         if (copyW > 0 && copyH > 0) {
-          this.pingPongBuffer.copyRect(encoder, dr.left, dr.top, copyW, copyH);
+          this.pingPongBuffer.copyRect(encoder, copyX, copyY, copyW, copyH);
         }
       } else if (prevDabRect) {
         // Subsequent dabs: copy previous dab's bounds
@@ -929,6 +982,7 @@ export class GPUStrokeAccumulator {
     this.pingPongBuffer.destroy();
     this.instanceBuffer.destroy();
     this.brushPipeline.destroy();
+    this.computeBrushPipeline.destroy();
     this.textureInstanceBuffer.destroy();
     this.textureBrushPipeline.destroy();
     this.textureAtlas.destroy();

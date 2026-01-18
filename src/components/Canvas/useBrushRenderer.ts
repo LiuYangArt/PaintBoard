@@ -60,6 +60,8 @@ export interface UseBrushRendererResult {
   getPreviewCanvas: () => HTMLCanvasElement | null;
   getPreviewOpacity: () => number;
   isStrokeActive: () => boolean;
+  /** Flush pending dabs to GPU (call once per frame) */
+  flushPending: () => void;
   /** Actual backend in use (may differ from requested if GPU unavailable) */
   backend: RenderBackend;
   /** Whether GPU is available */
@@ -233,10 +235,14 @@ export function useBrushRenderer({
       }
 
       // End CPU encode timing and trigger GPU sample if needed
+      // NOTE: Disabled during active painting to avoid breaking batch processing
+      // The RAF loop will handle flushing at the end of each frame
       if (pointIndex !== undefined && benchmarkProfiler) {
         // Force flush if this is a sample point to ensure accurate GPU timing
+        // IMPORTANT: Only flush if NOT using GPU batch rendering
+        // GPU batch rendering requires all dabs to be processed together before flush
         if (
-          backend === 'gpu' &&
+          backend !== 'gpu' && // Only flush for CPU backend
           gpuBufferRef.current &&
           benchmarkProfiler.shouldSampleGpu(pointIndex)
         ) {
@@ -314,6 +320,17 @@ export function useBrushRenderer({
     return cpuBufferRef.current?.isActive() ?? false;
   }, [backend]);
 
+  /**
+   * Flush pending dabs to GPU (called once per frame by RAF loop)
+   * This ensures all dabs accumulated during the frame are rendered together
+   */
+  const flushPending = useCallback(() => {
+    if (backend === 'gpu' && gpuBufferRef.current) {
+      gpuBufferRef.current.flush();
+    }
+    // CPU path doesn't need explicit flush - it renders immediately
+  }, [backend]);
+
   return {
     beginStroke,
     processPoint,
@@ -321,6 +338,7 @@ export function useBrushRenderer({
     getPreviewCanvas,
     getPreviewOpacity,
     isStrokeActive,
+    flushPending,
     backend,
     gpuAvailable,
   };
