@@ -855,3 +855,82 @@ flushBatch() {
 - [x] 恢复 BindGroup 缓存（现已禁用用于调试）
 - [x] 验证大 batch (>128 dab) 的分批逻辑是否正确
 - [x] 清理调试代码（DEBUG_VIS, console.log 等）
+
+---
+
+## Phase 11: 新发现的问题（2026-01-18）
+
+### 问题描述
+
+当 **spacing 极小**（如 1%）或 **笔刷极小** 时，笔触出现断开现象。
+
+### 现象
+
+- 小 spacing + 正常速度绘画 → 笔触断开成点状
+- 正常 spacing + 正常速度绘画 → 正常连贯
+
+### 可能的根因
+
+#### 假设 1: Dab 数量爆炸导致分批逻辑问题
+
+当 spacing 极小时，单次 pointer move 可能生成大量 dab（远超 128）：
+
+```
+spacing=1%, size=55px → 每像素移动约生成 1 个 dab
+快速划动 500px → 可能生成 500+ dabs
+```
+
+**问题点**:
+
+- `MAX_DABS_PER_BATCH = 128`
+- 超过 128 时触发 `dispatchInBatches()`
+- 分批逻辑中的 `copyTextureToTexture` 可能有 timing 问题
+
+```typescript
+// ComputeTextureBrushPipeline.ts dispatchInBatches()
+for (let i = 0; i < dabs.length; i += batchSize) {
+  const batch = dabs.slice(i, i + batchSize);
+  this.dispatch(encoder, currentInput, currentOutput, brushTexture, batch);
+
+  // 问题可能在这里：在同一个 encoder 中 copy + dispatch 的顺序
+  if (i + batchSize < dabs.length) {
+    encoder.copyTextureToTexture(/* output → input */);
+  }
+}
+```
+
+#### 假设 2: Shared Memory 溢出
+
+- `MAX_SHARED_DABS = 128` in WGSL
+- 如果 TypeScript 端传入超过 128 个 dab 未正确分批，shader 会访问越界
+
+#### 假设 3: Instance Buffer 容量问题
+
+- `TextureInstanceBuffer` 初始容量可能不足
+- 快速增长时可能有数据丢失
+
+### 验证步骤
+
+1. 添加日志追踪 dab 生成数量：
+
+   ```typescript
+   console.log('[flushTextureBatch] dab count:', dabs.length);
+   if (dabs.length > 128) {
+     console.warn('[flushTextureBatch] Triggering batch split!');
+   }
+   ```
+
+2. 检查 `dispatchInBatches` 是否被调用以及执行是否正确
+
+3. 验证 `TextureInstanceBuffer` 容量是否足够
+
+### 状态
+
+🔲 **待调查** - 建议新建 Issue 处理，避免当前 PR 范围过大
+
+### 建议
+
+由于这是一个独立的边界条件问题（极小 spacing），建议：
+
+1. 当前 PR 先合并（Texture Brush Compute Shader 主体功能正常）
+2. 新建 Issue 专门处理极小 spacing 场景的分批逻辑问题

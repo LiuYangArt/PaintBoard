@@ -437,14 +437,14 @@ if (bboxPixels > MAX_PIXELS_PER_BATCH) {
 - [x] WGSL struct 对齐修复
 - [x] dirtyRect 坐标缩放修复
 
-### Texture Brush (ABR 纹理笔刷) 🔲
+### Texture Brush (ABR 纹理笔刷) ✅
 
-- [ ] 创建 `ComputeTextureBrushPipeline` 类
-- [ ] 创建 `computeTextureBrush.wgsl` shader
-- [ ] 实现 `textureLoad()` + 手动双线性插值
-- [ ] 支持 rotation/roundness 变换
-- [ ] 集成 Texture Array 或多纹理切换
-- [ ] 与 `GPUStrokeAccumulator` 集成
+- [x] 创建 `ComputeTextureBrushPipeline` 类
+- [x] 创建 `computeTextureBrush.wgsl` shader
+- [x] 实现 `textureLoad()` + 手动双线性插值
+- [x] 支持 rotation/roundness 变换
+- [x] 集成 Texture Array 或多纹理切换
+- [x] 与 `GPUStrokeAccumulator` 集成
 
 ### 验证 🔲
 
