@@ -56,6 +56,10 @@ export class GPUStrokeAccumulator {
   // Batch timing control
   private dabsSinceLastFlush: number = 0;
 
+  // Auto-flush threshold: Must be <= WGSL MAX_SHARED_DABS (128) to prevent silent truncation.
+  // Using 64 as a conservative value to avoid triggering dispatchInBatches which has ping-pong bugs.
+  private static readonly MAX_SAFE_BATCH_SIZE = 64;
+
   // Readback buffer for GPU → CPU transfer
   private readbackBuffer: GPUBuffer | null = null;
   private readbackBytesPerRow: number = 0;
@@ -330,6 +334,12 @@ export class GPUStrokeAccumulator {
       this.expandDirtyRectTexture(params.x, params.y, halfSize);
       this.dabsSinceLastFlush++;
 
+      // Auto-flush when batch is full to avoid triggering dispatchInBatches
+      // which has ping-pong bugs causing stroke discontinuity
+      if (this.textureInstanceBuffer.count >= GPUStrokeAccumulator.MAX_SAFE_BATCH_SIZE) {
+        this.flushTextureBatch();
+      }
+
       return;
     }
 
@@ -352,6 +362,12 @@ export class GPUStrokeAccumulator {
     // Dirty rect is in logical coordinates (for preview canvas)
     this.expandDirtyRect(params.x, params.y, radius, params.hardness);
     this.dabsSinceLastFlush++;
+
+    // Auto-flush when batch is full to avoid triggering dispatchInBatches
+    // which has ping-pong bugs causing stroke discontinuity
+    if (this.instanceBuffer.count >= GPUStrokeAccumulator.MAX_SAFE_BATCH_SIZE) {
+      this.flushBatch();
+    }
   }
 
   /**

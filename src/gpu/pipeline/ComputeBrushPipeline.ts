@@ -19,9 +19,10 @@ import computeShaderCode from '../shaders/computeBrush.wgsl?raw';
 
 // Performance safety thresholds
 const MAX_PIXELS_PER_BATCH = 2_000_000; // ~1400x1400 area
-// NOTE: Increased from 128 to 512 to avoid dispatchInBatches which has ping-pong bugs
-// TODO: Fix dispatchInBatches logic properly (see gpu-compute-shader-spacing-issue.md Phase 12)
-const MAX_DABS_PER_BATCH = 512;
+// CRITICAL: Must match WGSL MAX_SHARED_DABS (128) to prevent silent truncation!
+// The shader uses shared memory: `var<workgroup> shared_dabs: array<DabData, 128>`
+// If we send more than 128 dabs, shader executes `min(dab_count, 128)` and silently drops the rest.
+const MAX_DABS_PER_BATCH = 128;
 
 // Dab data size in bytes (12 floats * 4 bytes = 48 bytes per dab)
 const DAB_DATA_SIZE = 48;
