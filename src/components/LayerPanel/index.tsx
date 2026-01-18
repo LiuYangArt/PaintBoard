@@ -348,7 +348,15 @@ const LayerItem = memo(function LayerItem({
       } ${isDropTarget ? 'drop-target' : ''}`}
       data-testid="layer-item"
       draggable
-      onDragStart={(e) => onDragStart(e, layer.id)}
+      onDragStart={(e) => {
+        // Only allow drag from the handle element
+        const target = e.target as HTMLElement;
+        if (!target.closest('.drag-handle')) {
+          e.preventDefault();
+          return;
+        }
+        onDragStart(e, layer.id);
+      }}
       onDragOver={(e) => onDragOver(e, layer.id)}
       onDragLeave={onDragLeave}
       onDrop={(e) => onDrop(e, layer.id)}
