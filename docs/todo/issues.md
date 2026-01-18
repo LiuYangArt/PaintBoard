@@ -1,5 +1,7 @@
 compute shader笔刷完成
 
+eraser 复用笔刷系统
+
 ---
 
 ## 绘图基础功能
