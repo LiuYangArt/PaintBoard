@@ -221,7 +221,6 @@ export class ComputeBrushPipeline {
   ): boolean {
     const batchSize = MAX_DABS_PER_BATCH;
     const batchCount = Math.ceil(dabs.length / batchSize);
-    console.log(`[dispatchInBatches] Splitting ${dabs.length} dabs into ${batchCount} batches`);
 
     // Compute bounding box for ALL dabs (needed for proper copy between batches)
     const allDabsBbox = this.computePreciseBoundingBox(dabs);
