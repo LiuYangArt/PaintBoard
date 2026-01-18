@@ -1,4 +1,5 @@
 compute shader笔刷完成
+后续笔刷需要优化抗锯齿
 
 eraser 复用笔刷系统
 

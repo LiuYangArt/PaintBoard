@@ -26,10 +26,6 @@ export function ToolsPanel() {
   const { currentTool, setTool } = useToolStore();
   const setScale = useViewportStore((s) => s.setScale);
 
-  const handleToolClick = (toolId: ToolType) => {
-    setTool(toolId);
-  };
-
   const handleToolDoubleClick = (toolId: ToolType) => {
     // Double-click on zoom tool resets scale to 100%
     if (toolId === 'zoom') {
@@ -43,7 +39,7 @@ export function ToolsPanel() {
         <button
           key={tool.id}
           className={`tool-grid-btn ${currentTool === tool.id ? 'active' : ''}`}
-          onClick={() => handleToolClick(tool.id)}
+          onClick={() => setTool(tool.id)}
           onDoubleClick={() => handleToolDoubleClick(tool.id)}
           title={tool.label}
         >
