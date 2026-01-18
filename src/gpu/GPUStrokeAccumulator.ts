@@ -30,7 +30,7 @@ export class GPUStrokeAccumulator {
   private instanceBuffer: InstanceBuffer;
   private brushPipeline: BrushPipeline;
   private computeBrushPipeline: ComputeBrushPipeline;
-  private useComputeShader: boolean = false; // Feature flag for compute shader path
+  private useComputeShader: boolean = true; // Re-enabled for no-bbox test
   private profiler: GPUProfiler;
 
   // Texture brush resources (separate from parametric brush)
@@ -398,10 +398,12 @@ export class GPUStrokeAccumulator {
 
     // Try compute shader path first
     if (this.useComputeShader) {
-      // Copy source to dest for the bbox region (compute shader reads from source, writes to dest)
-      // IMPORTANT: dirtyRect is in logical coordinates, need to scale to texture space
+      // Sequential dispatch - process one dab at a time to ensure proper blending order
+      // This avoids the parallel race condition where overlapping dabs can't see each other's writes
       const dr = this.dirtyRect;
       const scale = this.currentRenderScale;
+
+      // Initial copy: sync dest with source for the dirty region
       const copyX = Math.floor(dr.left * scale);
       const copyY = Math.floor(dr.top * scale);
       const copyW = Math.ceil((dr.right - dr.left) * scale);
@@ -410,18 +412,35 @@ export class GPUStrokeAccumulator {
         this.pingPongBuffer.copyRect(encoder, copyX, copyY, copyW, copyH);
       }
 
-      // Dispatch compute shader
-      const success = this.computeBrushPipeline.dispatch(
-        encoder,
-        this.pingPongBuffer.source,
-        this.pingPongBuffer.dest,
-        dabs
-      );
+      // Dispatch each dab individually, swapping ping-pong between each
+      let allSuccess = true;
+      for (let i = 0; i < dabs.length; i++) {
+        const singleDab = [dabs[i]!];
 
-      if (success) {
-        // Swap buffers once after compute dispatch
+        // Dispatch single dab
+        const success = this.computeBrushPipeline.dispatch(
+          encoder,
+          this.pingPongBuffer.source,
+          this.pingPongBuffer.dest,
+          singleDab
+        );
+
+        if (!success) {
+          allSuccess = false;
+          break;
+        }
+
+        // Swap buffers so next dab reads from the updated texture
         this.pingPongBuffer.swap();
 
+        // SIMPLIFIED: Use full copy instead of partial to verify issue
+        // For subsequent dabs, sync entire buffer (less efficient but more reliable)
+        if (i < dabs.length - 1) {
+          this.pingPongBuffer.copySourceToDest(encoder);
+        }
+      }
+
+      if (allSuccess) {
         void this.profiler.resolveTimestamps(encoder);
         this.device.queue.submit([encoder.finish()]);
 

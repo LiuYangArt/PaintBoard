@@ -686,3 +686,93 @@ private useComputeShader: boolean = false; // Disable Compute Shader to ensure c
 > **"Parallelism breaks Sequential Dependency"**
 
 当业务逻辑（如笔刷在画布上的叠加）严格依赖于**执行顺序**（即 dab N+1 的混合结果依赖于 dab N 的输出）时，天生并行的 Compute Shader 往往不是最直接的选择，除非能设计出无顺序依赖的算法，或者接受昂贵的 Barrier 同步。传统的 Graphics Pipeline 在处理这种"混合叠加"场景时，利用固定的硬件单元（ROP）反而更加稳健和简单。
+
+---
+
+## Phase 9: 进一步调试尝试 (2026-01-18)
+
+基于 `debug_review.md` 的建议，尝试了更多诊断方案。
+
+### 尝试的方案
+
+#### 方案 5: 逐个 dispatch dab
+
+**假设**: 并行竞争导致重叠 dab 无法看到彼此的结果
+
+**实现**: 在 Compute Shader 路径中，改为逐个 dispatch dab，每次 dispatch 后 swap ping-pong buffer
+
+```typescript
+for (let i = 0; i < dabs.length; i++) {
+  const singleDab = [dabs[i]!];
+  this.computeBrushPipeline.dispatch(encoder, source, dest, singleDab);
+  this.pingPongBuffer.swap();
+  if (i < dabs.length - 1) {
+    this.pingPongBuffer.copySourceToDest(encoder);
+  }
+}
+```
+
+**结果**: ❌ 问题仍然存在。快速划线时仍然是分散的点。
+
+#### 方案 4: 禁用 RenderScale
+
+**假设**: 坐标缩放导致 dirtyRect 或 copyRect 不匹配
+
+**实现**: 强制 `targetScale = 1.0`
+
+**结果**: ❌ 问题仍然存在。
+
+#### copyRect 全量复制测试
+
+**假设**: partial copyRect 区域计算有误，导致前一个 dab 的结果丢失
+
+**实现**: 改用 `copySourceToDest` 全量复制
+
+**结果**: ❌ 问题仍然存在。
+
+### 关键诊断: DEBUG_VIS
+
+在 Compute Shader 中添加了 dab 中心可视化（红色 5px 圆点）：
+
+```wgsl
+// DEBUG: Draw red marker at dab center (5px radius)
+if (DEBUG_VIS) {
+  let center_dist = distance(pixel, dab_center);
+  if (center_dist < 5.0) {
+    color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
+    continue;
+  }
+}
+```
+
+**观察结果**:
+
+- 每个 dab 的红点确实渲染在正确的中心位置
+- 红点与红点之间的距离就是分散的（快速划线时）
+- 慢速划线时红点紧密，快速划线时红点分散
+
+### 当前发现
+
+| 测试项             | 结果            | 结论                       |
+| ------------------ | --------------- | -------------------------- |
+| 日志显示每次 flush | 只有 1-4 个 dab | 问题可能在累积时机         |
+| DEBUG_VIS 红点位置 | 位置正确        | 数据正确传入 GPU           |
+| 红点间距           | 快速划线时分散  | dab 生成间距本身就大       |
+| Render Pipeline    | 工作正常        | 问题在 Compute Shader 特有 |
+
+### 未解决的疑问
+
+1. **为什么 Render Pipeline 工作正常但 Compute Shader 不行**？
+   - 两者使用相同的 dab 数据
+   - 两者使用相同的 ping-pong buffer
+   - 理论上 逐个 dispatch 后结果应该相同
+
+2. **每次 flush 只有 1-4 个 dab 是否正常**？
+   - 可能是 flushPending 调用频率问题
+   - 需要进一步追踪 dab 累积逻辑
+
+### 待尝试方向
+
+- [ ] 检查 Compute Shader 的 textureLoad/textureStore 是否正确同步
+- [ ] 对比 Render Pipeline 和 Compute Shader 的逐帧输出
+- [ ] 检查 GPU command encoder 的命令顺序是否正确

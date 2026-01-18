@@ -160,7 +160,6 @@ export class ComputeBrushPipeline {
     // Check bbox pixel limit (prevent diagonal stroke issue)
     const bboxPixels = bbox.width * bbox.height;
     if (bboxPixels > MAX_PIXELS_PER_BATCH) {
-      console.warn(`[ComputeBrush] BBox too large: ${bbox.width}x${bbox.height}, splitting batch`);
       return this.dispatchInBatches(encoder, inputTexture, outputTexture, dabs);
     }
 
