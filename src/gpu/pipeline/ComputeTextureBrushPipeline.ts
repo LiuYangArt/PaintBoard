@@ -43,9 +43,6 @@ export class ComputeTextureBrushPipeline {
   // Cached color blend mode
   private colorBlendMode: number = 0; // 0 = sRGB, 1 = linear
 
-  // Current brush texture (for BindGroup cache invalidation)
-  private currentBrushTextureLabel: string = '';
-
   constructor(device: GPUDevice) {
     this.device = device;
 
@@ -236,23 +233,15 @@ export class ComputeTextureBrushPipeline {
   }
 
   /**
-   * Get or create BindGroup (with caching for performance)
-   * Cache key includes brush texture to handle texture switches
+   * Get or create BindGroup with caching
    */
   private getOrCreateBindGroup(
     inputTexture: GPUTexture,
     outputTexture: GPUTexture,
     brushTexture: GPUBrushTexture
   ): GPUBindGroup {
-    // Use texture labels as cache key
     const brushLabel = brushTexture.texture.label || 'brush';
     const key = `${inputTexture.label || 'input'}_${outputTexture.label || 'output'}_${brushLabel}`;
-
-    // Invalidate cache if brush texture changed
-    if (brushLabel !== this.currentBrushTextureLabel) {
-      this.cachedBindGroups.clear();
-      this.currentBrushTextureLabel = brushLabel;
-    }
 
     let bindGroup = this.cachedBindGroups.get(key);
     if (!bindGroup) {

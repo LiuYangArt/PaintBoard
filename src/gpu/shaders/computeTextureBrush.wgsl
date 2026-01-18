@@ -115,14 +115,32 @@ fn sample_texture_bilinear(tex: texture_2d<f32>, uv: vec2<f32>) -> f32 {
 }
 
 // ============================================================================
+// Calculate half dimensions considering texture aspect ratio and roundness
+// ============================================================================
+fn calculate_half_dimensions(dab: TextureDabData) -> vec2<f32> {
+  let tex_aspect = dab.tex_width / dab.tex_height;
+  var half_width: f32;
+  var half_height: f32;
+
+  if (tex_aspect >= 1.0) {
+    half_width = dab.size / 2.0;
+    half_height = half_width / tex_aspect;
+  } else {
+    half_height = dab.size / 2.0;
+    half_width = half_height * tex_aspect;
+  }
+
+  return vec2<f32>(half_width, half_height * dab.roundness);
+}
+
+// ============================================================================
 // Compute Texture Mask with Rotation, Roundness, and Aspect Ratio
 // Transforms pixel position to UV space considering all brush parameters
 // ============================================================================
 fn compute_texture_mask(pixel: vec2<f32>, dab: TextureDabData) -> f32 {
-  // 1. Calculate offset from dab center
   let offset = pixel - vec2<f32>(dab.center_x, dab.center_y);
 
-  // 2. Inverse rotation (rotate pixel back to dab's local space)
+  // Inverse rotation (rotate pixel back to dab's local space)
   let cos_a = cos(-dab.angle);
   let sin_a = sin(-dab.angle);
   let rotated = vec2<f32>(
@@ -130,64 +148,27 @@ fn compute_texture_mask(pixel: vec2<f32>, dab: TextureDabData) -> f32 {
     offset.x * sin_a + offset.y * cos_a
   );
 
-  // 3. Calculate half sizes considering texture aspect ratio
-  let tex_aspect = dab.tex_width / dab.tex_height;
-  var half_width: f32;
-  var half_height: f32;
+  let half_dims = calculate_half_dimensions(dab);
 
-  if (tex_aspect >= 1.0) {
-    // Wider than tall
-    half_width = dab.size / 2.0;
-    half_height = half_width / tex_aspect;
-  } else {
-    // Taller than wide
-    half_height = dab.size / 2.0;
-    half_width = half_height * tex_aspect;
-  }
-
-  // 4. Apply roundness (squeeze vertically in local space)
-  half_height = half_height * dab.roundness;
-
-  // 5. Normalize to UV space (0-1)
-  // In local space: x in [-half_width, half_width], y in [-half_height, half_height]
-  let normalized = vec2<f32>(
-    rotated.x / half_width,
-    rotated.y / half_height
-  );
-
-  // Convert from [-1, 1] to [0, 1]
+  // Normalize to UV space: [-1, 1] -> [0, 1]
+  let normalized = rotated / half_dims;
   let uv = (normalized + 1.0) / 2.0;
 
-  // 6. Bounds check - outside texture means no mask
+  // Bounds check
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     return 0.0;
   }
 
-  // 7. Sample texture with bilinear interpolation
   return sample_texture_bilinear(brush_texture, uv);
 }
 
 // ============================================================================
 // Calculate effective bounding radius for early culling
-// Must account for rotation (diagonal is longest)
+// After rotation, the bounding circle is the diagonal
 // ============================================================================
 fn calculate_effective_radius(dab: TextureDabData) -> f32 {
-  let tex_aspect = dab.tex_width / dab.tex_height;
-  var half_width: f32;
-  var half_height: f32;
-
-  if (tex_aspect >= 1.0) {
-    half_width = dab.size / 2.0;
-    half_height = half_width / tex_aspect;
-  } else {
-    half_height = dab.size / 2.0;
-    half_width = half_height * tex_aspect;
-  }
-
-  half_height = half_height * dab.roundness;
-
-  // After rotation, the bounding circle is the diagonal
-  return sqrt(half_width * half_width + half_height * half_height);
+  let half_dims = calculate_half_dimensions(dab);
+  return length(half_dims);
 }
 
 // ============================================================================
@@ -196,7 +177,6 @@ fn calculate_effective_radius(dab: TextureDabData) -> f32 {
 @compute @workgroup_size(8, 8)
 fn main(
   @builtin(global_invocation_id) gid: vec3<u32>,
-  @builtin(local_invocation_id) lid: vec3<u32>,
   @builtin(local_invocation_index) local_idx: u32
 ) {
   // -------------------------------------------------------------------------
