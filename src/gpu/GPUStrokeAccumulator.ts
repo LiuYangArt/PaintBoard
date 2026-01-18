@@ -398,12 +398,12 @@ export class GPUStrokeAccumulator {
 
     // Try compute shader path first
     if (this.useComputeShader) {
-      // Sequential dispatch - process one dab at a time to ensure proper blending order
-      // This avoids the parallel race condition where overlapping dabs can't see each other's writes
+      // SIMPLIFIED TEST: Single dispatch for ALL dabs in the batch
+      // No ping-pong swap within flushBatch - just one dispatch
       const dr = this.dirtyRect;
       const scale = this.currentRenderScale;
 
-      // Initial copy: sync dest with source for the dirty region
+      // Copy source to dest to preserve previous strokes
       const copyX = Math.floor(dr.left * scale);
       const copyY = Math.floor(dr.top * scale);
       const copyW = Math.ceil((dr.right - dr.left) * scale);
@@ -412,35 +412,18 @@ export class GPUStrokeAccumulator {
         this.pingPongBuffer.copyRect(encoder, copyX, copyY, copyW, copyH);
       }
 
-      // Dispatch each dab individually, swapping ping-pong between each
-      let allSuccess = true;
-      for (let i = 0; i < dabs.length; i++) {
-        const singleDab = [dabs[i]!];
+      // Single dispatch for all dabs in this batch
+      const success = this.computeBrushPipeline.dispatch(
+        encoder,
+        this.pingPongBuffer.source,
+        this.pingPongBuffer.dest,
+        dabs // All dabs at once, not one by one
+      );
 
-        // Dispatch single dab
-        const success = this.computeBrushPipeline.dispatch(
-          encoder,
-          this.pingPongBuffer.source,
-          this.pingPongBuffer.dest,
-          singleDab
-        );
-
-        if (!success) {
-          allSuccess = false;
-          break;
-        }
-
-        // Swap buffers so next dab reads from the updated texture
+      if (success) {
+        // Swap so next flushBatch reads from the updated texture
         this.pingPongBuffer.swap();
 
-        // SIMPLIFIED: Use full copy instead of partial to verify issue
-        // For subsequent dabs, sync entire buffer (less efficient but more reliable)
-        if (i < dabs.length - 1) {
-          this.pingPongBuffer.copySourceToDest(encoder);
-        }
-      }
-
-      if (allSuccess) {
         void this.profiler.resolveTimestamps(encoder);
         this.device.queue.submit([encoder.finish()]);
 

@@ -771,8 +771,87 @@ if (DEBUG_VIS) {
    - 可能是 flushPending 调用频率问题
    - 需要进一步追踪 dab 累积逻辑
 
-### 待尝试方向
+---
 
-- [ ] 检查 Compute Shader 的 textureLoad/textureStore 是否正确同步
-- [ ] 对比 Render Pipeline 和 Compute Shader 的逐帧输出
-- [ ] 检查 GPU command encoder 的命令顺序是否正确
+## Phase 10: 最终解决方案（2026-01-18）
+
+### 问题根因定位
+
+经过多轮调试，最终确认问题在于 **方案 5 的逐个 dispatch + swap 逻辑**。
+
+#### 失败的尝试
+
+| 尝试                 | 结果 | 说明                                 |
+| -------------------- | ---- | ------------------------------------ |
+| BindGroup label 修复 | ❌   | 给 PingPong texture 唯一 label (A/B) |
+| 禁用 BindGroup 缓存  | ❌   | 每次创建新 BindGroup                 |
+| 全画布 dispatch      | ❌   | 禁用 bbox 优化                       |
+
+#### 成功的方案
+
+**一次性 dispatch 所有 dab**：
+
+```typescript
+// SIMPLIFIED: Single dispatch for ALL dabs in the batch
+const success = this.computeBrushPipeline.dispatch(
+  encoder,
+  this.pingPongBuffer.source,
+  this.pingPongBuffer.dest,
+  dabs // All dabs at once, not one by one
+);
+
+if (success) {
+  this.pingPongBuffer.swap();
+  this.device.queue.submit([encoder.finish()]);
+}
+```
+
+### 根因分析
+
+方案 5 的逐个 dispatch 逻辑有以下问题：
+
+1. **命令录制 vs 执行时机不匹配**：
+   - `swap()` 是 JS 同步操作，立即交换 texture 引用
+   - `dispatch()` 只是录制命令到 encoder，尚未执行
+   - 后续 `copySourceToDest()` 使用的是 swap 后的引用，但命令执行顺序可能不符合预期
+
+2. **Compute Shader 设计意图被误解**：
+   - Compute Shader 本身设计为**一次处理多个 dab**（通过 shared memory 优化）
+   - 逐个 dispatch 破坏了这个设计优势，还引入了复杂的 ping-pong 同步问题
+
+3. **与 Render Pipeline 的关键差异**：
+   - Render Pipeline 的硬件 ROP 保证正确的 alpha blending 顺序
+   - Compute Shader 需要手动管理 textureLoad/textureStore 的依赖关系
+   - 逐个 dispatch 时，命令之间的依赖关系不明确
+
+### 教训总结
+
+> [!IMPORTANT]
+> **Compute Shader 应该批量处理 dab，而不是逐个 dispatch**。
+> 这既符合 GPU 并行计算的设计理念，也避免了复杂的同步问题。
+
+### 最终代码结构
+
+```typescript
+flushBatch() {
+  const dabs = this.instanceBuffer.getDabsData();
+
+  // 1. Copy previous result to dest
+  this.pingPongBuffer.copyRect(encoder, ...dirtyRect);
+
+  // 2. Single dispatch for all dabs
+  this.computeBrushPipeline.dispatch(encoder, source, dest, dabs);
+
+  // 3. Swap for next flushBatch
+  this.pingPongBuffer.swap();
+
+  // 4. Submit
+  this.device.queue.submit([encoder.finish()]);
+}
+```
+
+### 后续优化方向
+
+- [ ] 恢复 BindGroup 缓存（现已禁用用于调试）
+- [ ] 验证大 batch (>128 dab) 的分批逻辑是否正确
+- [ ] 清理调试代码（DEBUG_VIS, console.log 等）

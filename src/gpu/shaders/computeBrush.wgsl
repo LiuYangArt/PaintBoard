@@ -226,7 +226,7 @@ fn main(
   // Step 5: Iterate all dabs, blend in order (read from shared memory)
   // -------------------------------------------------------------------------
   // DEBUG: Visualize dab center positions as red dots
-  let DEBUG_VIS = true; // ENABLED: see dab centers as red markers
+  let DEBUG_VIS = false; // Disabled - root cause found (BindGroup cache key collision)
 
   for (var i = 0u; i < shared_dab_count; i++) {
     let dab = shared_dabs[i];

@@ -31,17 +31,24 @@ export class PingPongBuffer {
     this._textureWidth = Math.max(1, Math.floor(width * renderScale));
     this._textureHeight = Math.max(1, Math.floor(height * renderScale));
 
-    const textureDesc = this.createTextureDescriptor(this._textureWidth, this._textureHeight);
-
-    this.textureA = device.createTexture(textureDesc);
-    this.textureB = device.createTexture(textureDesc);
+    // Create textures with unique labels (critical for BindGroup caching)
+    this.textureA = device.createTexture(
+      this.createTextureDescriptor(this._textureWidth, this._textureHeight, 'A')
+    );
+    this.textureB = device.createTexture(
+      this.createTextureDescriptor(this._textureWidth, this._textureHeight, 'B')
+    );
     this.currentSource = this.textureA;
     this.currentDest = this.textureB;
   }
 
-  private createTextureDescriptor(width: number, height: number): GPUTextureDescriptor {
+  private createTextureDescriptor(
+    width: number,
+    height: number,
+    labelSuffix: string = ''
+  ): GPUTextureDescriptor {
     return {
-      label: 'PingPong Texture',
+      label: `PingPong Texture ${labelSuffix}`.trim(),
       size: [width, height],
       format: this.format,
       usage:
@@ -184,10 +191,12 @@ export class PingPongBuffer {
     this.textureA.destroy();
     this.textureB.destroy();
 
-    const textureDesc = this.createTextureDescriptor(newTextureW, newTextureH);
-
-    this.textureA = this.device.createTexture(textureDesc);
-    this.textureB = this.device.createTexture(textureDesc);
+    this.textureA = this.device.createTexture(
+      this.createTextureDescriptor(newTextureW, newTextureH, 'A')
+    );
+    this.textureB = this.device.createTexture(
+      this.createTextureDescriptor(newTextureW, newTextureH, 'B')
+    );
     this.currentSource = this.textureA;
     this.currentDest = this.textureB;
 

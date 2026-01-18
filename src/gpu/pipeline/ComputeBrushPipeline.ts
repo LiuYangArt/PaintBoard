@@ -239,10 +239,11 @@ export class ComputeBrushPipeline {
   }
 
   /**
-   * Get or create BindGroup (caching strategy)
+   * Get or create BindGroup (with caching for performance)
+   * NOTE: Caching works correctly now that textures have unique labels (A/B)
    */
   private getOrCreateBindGroup(inputTexture: GPUTexture, outputTexture: GPUTexture): GPUBindGroup {
-    // Use texture label as cache key (Ping-Pong only has two states)
+    // Use texture label as cache key (PingPong textures have unique labels A/B)
     const key = `${inputTexture.label || 'input'}_${outputTexture.label || 'output'}`;
 
     let bindGroup = this.cachedBindGroups.get(key);
