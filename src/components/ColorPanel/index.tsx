@@ -64,7 +64,6 @@ export function ColorPanel() {
 
   return (
     <div className="color-panel">
-      <h3>Color</h3>
       <div className="color-picker-wrapper">
         {/* Custom Layout: Saturation + Vertical Hue */}
         <div className="picker-area">

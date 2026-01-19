@@ -184,7 +184,6 @@ export function LayerPanel(): JSX.Element {
   return (
     <aside className="layer-panel">
       <header className="layer-panel-header">
-        <h3>Layers</h3>
         <div className="layer-panel-actions">
           <button
             className="clear-layer-btn"
