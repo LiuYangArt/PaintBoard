@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Main Workspace Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                        "surface-glass": "rgba(32, 32, 32, 0.65)",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom Mica Effect */
+        .mica-panel {
+            background-color: rgba(30, 30, 35, 0.7);
+            backdrop-filter: blur(20px) saturate(120%);
+            -webkit-backdrop-filter: blur(20px) saturate(120%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Canvas Pattern */
+        .canvas-bg {
+            background-image: 
+                linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        /* Hide Scrollbar for clean UI */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-dark dark text-white font-display h-screen w-screen overflow-hidden selection:bg-primary selection:text-white">
+<!-- App Container -->
+<div class="relative w-full h-full flex flex-col items-center justify-center bg-[#111a22] group/design-root">
+<!-- Main Workspace Area -->
+<div class="relative w-full h-full flex overflow-hidden">
+<!-- Infinite Canvas Area -->
+<div class="absolute inset-0 bg-[#0f1318] flex items-center justify-center overflow-hidden z-0" data-alt="Dark gray workspace background with a centered white drawing canvas">
+<!-- The Drawing Canvas -->
+<div class="relative w-[85%] h-[80%] bg-white shadow-2xl rounded-sm transform scale-100 transition-transform duration-200 ease-out origin-center cursor-crosshair">
+<!-- Placeholder Art Content -->
+<div class="absolute inset-0 overflow-hidden opacity-90">
+<!-- Abstract shapes representing drawing -->
+<div class="absolute top-[20%] left-[20%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-3xl mix-blend-multiply"></div>
+<div class="absolute bottom-[30%] right-[20%] w-[35%] h-[35%] bg-purple-500/20 rounded-full blur-3xl mix-blend-multiply"></div>
+<!-- Vector Lines -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+<path d="M150,200 Q400,50 600,300 T900,200" fill="none" stroke="#111" stroke-linecap="round" stroke-width="4"></path>
+<circle cx="600" cy="300" fill="#137fec" r="10"></circle>
+</svg>
+</div>
+<!-- Canvas Grid overlay (very subtle) -->
+<div class="absolute inset-0 pointer-events-none opacity-[0.03] canvas-bg"></div>
+</div>
+</div>
+<!-- Top Menu Bar (Fluent Header) -->
+<div class="absolute top-0 left-0 right-0 h-10 mica-panel border-b border-white/5 z-50 flex items-center justify-between px-3 select-none">
+<div class="flex items-center gap-4">
+<!-- App Logo/Menu -->
+<button class="flex items-center justify-center w-8 h-8 text-primary hover:bg-white/10 rounded transition-colors">
+<span class="material-symbols-outlined" style="font-size: 20px;">draw</span>
+</button>
+<!-- Menu Text Items -->
+<div class="hidden sm:flex items-center gap-1">
+<button class="px-3 py-1 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white rounded transition-colors">File</button>
+<button class="px-3 py-1 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white rounded transition-colors">Edit</button>
+<button class="px-3 py-1 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white rounded transition-colors">Image</button>
+<button class="px-3 py-1 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white rounded transition-colors">Layer</button>
+<button class="px-3 py-1 text-xs font-medium text-gray-300 hover:bg-white/10 hover:text-white rounded transition-colors">Select</button>
+</div>
+</div>
+<!-- Window/Mobile Controls -->
+<div class="flex items-center gap-2">
+<div class="h-6 px-3 rounded bg-white/5 border border-white/5 flex items-center justify-center gap-2">
+<span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+<span class="text-[10px] text-gray-400 font-medium">Saved</span>
+</div>
+<button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors">
+<span class="material-symbols-outlined" style="font-size: 18px;">share</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors">
+<span class="material-symbols-outlined" style="font-size: 18px;">settings</span>
+</button>
+</div>
+</div>
+<!-- Left Toolbar (Floating) -->
+<div class="absolute left-3 top-14 bottom-10 w-[52px] flex flex-col z-40">
+<div class="mica-panel rounded-xl flex flex-col items-center py-2 gap-1 shadow-2xl">
+<!-- Brush Tool (Active) -->
+<div class="relative group p-1 w-full flex justify-center">
+<div class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-primary rounded-r-full"></div>
+<button class="w-10 h-10 rounded-lg bg-primary/20 text-primary flex items-center justify-center transition-all hover:bg-primary hover:text-white">
+<span class="material-symbols-outlined" style="font-size: 22px;">brush</span>
+</button>
+</div>
+<!-- Eraser -->
+<div class="p-1 w-full flex justify-center">
+<button class="w-10 h-10 rounded-lg text-gray-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined" style="font-size: 22px;">ink_eraser</span>
+</button>
+</div>
+<!-- Marquee -->
+<div class="p-1 w-full flex justify-center">
+<button class="w-10 h-10 rounded-lg text-gray-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined" style="font-size: 22px;">select_all</span>
+</button>
+</div>
+<!-- Move -->
+<div class="p-1 w-full flex justify-center">
+<button class="w-10 h-10 rounded-lg text-gray-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined" style="font-size: 22px;">open_with</span>
+</button>
+</div>
+<!-- Fill Bucket -->
+<div class="p-1 w-full flex justify-center">
+<button class="w-10 h-10 rounded-lg text-gray-400 hover:bg-white/10 hover:text-white flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined" style="font-size: 22px;">format_color_fill</span>
+</button>
+</div>
+<!-- Divider -->
+<div class="w-6 h-[1px] bg-white/10 my-1"></div>
+<!-- Color Swatches -->
+<div class="flex flex-col gap-2 mb-2">
+<button class="w-8 h-8 rounded-full border-2 border-white/20 shadow-lg relative group overflow-hidden" style="background: #137fec;">
+<div class="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent"></div>
+</button>
+<button class="w-8 h-8 rounded-full border border-white/10 shadow-lg relative group overflow-hidden" style="background: #222;">
+</button>
+</div>
+</div>
+<!-- Floating Brush Properties (Contextual) -->
+<div class="mt-3 mica-panel rounded-xl p-2 flex flex-col items-center gap-3 shadow-2xl">
+<div class="flex flex-col items-center gap-1 w-full">
+<span class="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Size</span>
+<div class="w-1 h-12 bg-gray-700 rounded-full relative cursor-pointer">
+<div class="absolute bottom-0 left-0 right-0 h-[60%] bg-white rounded-full"></div>
+<div class="absolute bottom-[60%] left-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full shadow-md translate-y-1.5"></div>
+</div>
+</div>
+<div class="flex flex-col items-center gap-1 w-full">
+<span class="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Opac</span>
+<div class="w-1 h-12 bg-gray-700 rounded-full relative cursor-pointer">
+<div class="absolute bottom-0 left-0 right-0 h-[100%] bg-primary rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Layers Panel (Collapsible/Floating) -->
+<div class="absolute right-3 top-14 bottom-10 w-64 flex flex-col gap-3 z-40 pointer-events-none sm:pointer-events-auto">
+<div class="flex-1 mica-panel rounded-xl flex flex-col shadow-2xl overflow-hidden pointer-events-auto">
+<!-- Header -->
+<div class="h-10 border-b border-white/5 flex items-center justify-between px-3 bg-white/5">
+<h2 class="text-xs font-bold text-white tracking-wide">LAYERS</h2>
+<div class="flex gap-1">
+<button class="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined" style="font-size: 16px;">add</span>
+</button>
+<button class="p-1.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
+</button>
+</div>
+</div>
+<!-- Layer List -->
+<div class="flex-1 overflow-y-auto p-2 space-y-1">
+<!-- Layer Item: Active -->
+<div class="group flex items-center gap-2 p-2 rounded-lg bg-primary/20 border border-primary/40 cursor-pointer">
+<button class="text-gray-300 hover:text-white opacity-100">
+<span class="material-symbols-outlined" style="font-size: 18px;">visibility</span>
+</button>
+<!-- Thumbnail -->
+<div class="w-10 h-10 bg-white rounded-md border border-white/10 overflow-hidden relative shadow-sm">
+<svg class="absolute inset-0 w-full h-full" viewbox="0 0 100 100">
+<path d="M20,80 C40,20 80,40 80,80" fill="none" stroke="#137fec" stroke-width="5"></path>
+</svg>
+</div>
+<!-- Info -->
+<div class="flex-1 min-w-0 flex flex-col">
+<span class="text-xs font-medium text-white truncate">Ink Outline</span>
+<span class="text-[10px] text-primary/80">Normal</span>
+</div>
+</div>
+<!-- Layer Item: Inactive -->
+<div class="group flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 border border-transparent cursor-pointer transition-colors">
+<button class="text-gray-600 hover:text-white group-hover:text-gray-400 transition-colors">
+<span class="material-symbols-outlined" style="font-size: 18px;">visibility</span>
+</button>
+<div class="w-10 h-10 bg-white rounded-md border border-white/10 overflow-hidden relative opacity-70">
+<div class="absolute inset-0 bg-purple-500/20"></div>
+</div>
+<div class="flex-1 min-w-0 flex flex-col">
+<span class="text-xs font-medium text-gray-400 group-hover:text-gray-200 truncate">Sketch</span>
+<span class="text-[10px] text-gray-600">Multiply 50%</span>
+</div>
+</div>
+<!-- Layer Item: Inactive -->
+<div class="group flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 border border-transparent cursor-pointer transition-colors">
+<button class="text-gray-600 hover:text-white group-hover:text-gray-400 transition-colors">
+<span class="material-symbols-outlined" style="font-size: 18px;">visibility</span>
+</button>
+<div class="w-10 h-10 bg-white rounded-md border border-white/10 overflow-hidden relative opacity-70">
+</div>
+<div class="flex-1 min-w-0 flex flex-col">
+<span class="text-xs font-medium text-gray-400 group-hover:text-gray-200 truncate">Background</span>
+<span class="text-[10px] text-gray-600">Locked</span>
+</div>
+<span class="material-symbols-outlined text-gray-600" style="font-size: 14px;">lock</span>
+</div>
+</div>
+<!-- Layer Blending/Opacity Footer -->
+<div class="p-3 bg-black/20 border-t border-white/5">
+<div class="flex items-center justify-between mb-2">
+<span class="text-[10px] font-bold text-gray-500 uppercase">Blending</span>
+<span class="text-[10px] font-medium text-white bg-white/10 px-1.5 py-0.5 rounded">Normal</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-[10px] font-bold text-gray-500 uppercase w-8">Opac</span>
+<div class="flex-1 h-1 bg-gray-700 rounded-full relative">
+<div class="absolute top-0 left-0 bottom-0 w-[100%] bg-primary rounded-full"></div>
+<div class="absolute top-1/2 right-0 -translate-y-1/2 w-2 h-2 bg-white rounded-full shadow"></div>
+</div>
+<span class="text-[10px] font-medium text-gray-400 w-6 text-right">100</span>
+</div>
+</div>
+</div>
+<!-- History / Navigator Mini Panel -->
+<div class="h-32 mica-panel rounded-xl hidden sm:flex flex-col shadow-2xl overflow-hidden pointer-events-auto">
+<div class="h-8 border-b border-white/5 flex items-center px-3 bg-white/5">
+<h2 class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Navigator</h2>
+</div>
+<div class="flex-1 p-2 flex items-center justify-center">
+<div class="w-full h-full border border-white/10 bg-[#111] relative">
+<div class="absolute inset-2 border border-primary"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Status Bar -->
+<div class="absolute bottom-0 left-0 right-0 h-7 mica-panel border-t border-white/5 flex items-center justify-between px-4 text-[10px] text-gray-400 z-50 select-none">
+<div class="flex items-center gap-4">
+<button class="flex items-center gap-1 hover:text-white transition-colors">
+<span class="material-symbols-outlined" style="font-size: 14px;">zoom_in</span>
+<span>125%</span>
+</button>
+<span class="hidden sm:inline-block w-[1px] h-3 bg-gray-700"></span>
+<span class="hidden sm:inline-block">2048 x 2048px (300dpi)</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="font-mono">X: 1024 Y: 840</span>
+<span class="w-[1px] h-3 bg-gray-700"></span>
+<span class="flex items-center gap-1">
+<div class="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                        Ready
+                    </span>
+</div>
+</div>
+</div>
+</div>
+</body></html>
