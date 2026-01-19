@@ -59,8 +59,8 @@ function AppMenu() {
   const [panelsSubmenuOpen, setPanelsSubmenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const panels = usePanelStore((s) => s.panels);
-  const configs = usePanelStore((s) => s.configs);
+  // Only show Brush panel in menu (Tools, Color, Layers are now fixed)
+  const brushPanel = usePanelStore((s) => s.panels['brush-panel']);
   const openPanel = usePanelStore((s) => s.openPanel);
   const closePanel = usePanelStore((s) => s.closePanel);
 
@@ -78,19 +78,13 @@ function AppMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const handleTogglePanel = (panelId: string, isCurrentlyOpen: boolean) => {
-    if (isCurrentlyOpen) {
-      closePanel(panelId);
+  const handleToggleBrushPanel = () => {
+    if (brushPanel?.isOpen) {
+      closePanel('brush-panel');
     } else {
-      openPanel(panelId);
+      openPanel('brush-panel');
     }
   };
-
-  const panelList = Object.entries(panels).map(([id, panel]) => ({
-    id,
-    title: configs[id]?.title || id,
-    isOpen: panel.isOpen,
-  }));
 
   return (
     <div className="app-menu" ref={menuRef}>
@@ -116,16 +110,10 @@ function AppMenu() {
 
             {panelsSubmenuOpen && (
               <div className="submenu">
-                {panelList.map((panel) => (
-                  <button
-                    key={panel.id}
-                    className="menu-item"
-                    onClick={() => handleTogglePanel(panel.id, panel.isOpen)}
-                  >
-                    {panel.isOpen ? <Eye size={14} /> : <EyeOff size={14} />}
-                    <span>{panel.title}</span>
-                  </button>
-                ))}
+                <button className="menu-item" onClick={handleToggleBrushPanel}>
+                  {brushPanel?.isOpen ? <Eye size={14} /> : <EyeOff size={14} />}
+                  <span>Brush</span>
+                </button>
               </div>
             )}
           </div>

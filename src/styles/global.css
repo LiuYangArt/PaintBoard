@@ -3,7 +3,7 @@
   /* =========================
    * Mica/Glass Effect Tokens
    * ========================= */
-  --mica-bg: rgba(30, 30, 35, 0.7);
+  --mica-bg: rgba(20, 20, 25, 0.8);
   --mica-bg-solid: #1e1e23;
   --mica-blur: blur(20px) saturate(120%);
   --mica-border: rgba(255, 255, 255, 0.08);
@@ -89,7 +89,9 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -163,7 +165,9 @@ button {
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 button:hover {
@@ -180,8 +184,8 @@ button:disabled {
 }
 
 /* Input Base */
-input[type="text"],
-input[type="number"] {
+input[type='text'],
+input[type='number'] {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border);
@@ -241,7 +245,9 @@ input:focus {
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .icon-btn:hover {
@@ -268,7 +274,9 @@ input:focus {
   border-radius: var(--radius-lg);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .tool-btn-fluent:hover {

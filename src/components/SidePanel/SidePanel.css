@@ -1,0 +1,178 @@
+/* Side Panels - Fixed Position Layout */
+
+/* ============================
+ * Left Toolbar (Tools)
+ * ============================ */
+.left-toolbar {
+  position: fixed;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+
+  /* Mica effect */
+  background-color: var(--mica-bg);
+  backdrop-filter: var(--mica-blur);
+  -webkit-backdrop-filter: var(--mica-blur);
+  border: 1px solid var(--mica-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--mica-shadow);
+
+  padding: 8px 4px;
+}
+
+.toolbar-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.tool-grid-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tool-grid-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.tool-grid-btn.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+
+/* Active indicator bar */
+.tool-grid-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  background: var(--primary);
+  border-radius: 0 var(--radius-full) var(--radius-full) 0;
+}
+
+.tool-grid-btn:focus {
+  outline: none;
+}
+
+/* ============================
+ * Right Panel (Color + Layers)
+ * ============================ */
+.right-panel {
+  position: fixed;
+  right: 20px;
+  top: 60px; /* Below toolbar */
+  bottom: 20px;
+  width: 280px;
+  z-index: 1000;
+
+  /* Mica effect */
+  background-color: var(--mica-bg);
+  backdrop-filter: var(--mica-blur);
+  -webkit-backdrop-filter: var(--mica-blur);
+  border: 1px solid var(--mica-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--mica-shadow);
+
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.color-section {
+  flex-shrink: 0;
+}
+
+.layer-section {
+  flex: 1;
+  min-height: 200px;
+  overflow: hidden;
+}
+
+.section-header {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.section-header h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.section-content {
+  overflow: hidden;
+}
+
+.layer-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Layer panel fills available space */
+.layer-content .layer-panel {
+  height: 100%;
+}
+
+.panel-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* ============================
+ * Adjustments for embedded panels
+ * ============================ */
+
+/* ColorPanel inside RightPanel - remove extra padding */
+.right-panel .color-panel {
+  padding: 8px;
+}
+
+/* LayerPanel inside RightPanel - adjust header */
+.right-panel .layer-panel {
+  border-radius: 0;
+}
+
+.right-panel .layer-panel-header {
+  display: none; /* Hide duplicate header - using section-header instead */
+}
+
+/* Show layer actions in section header instead */
+.section-header .layer-panel-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}

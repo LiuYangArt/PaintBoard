@@ -5,6 +5,7 @@ import { TabletPanel } from './components/TabletPanel';
 import { useDocumentStore } from './stores/document';
 import { useTabletStore } from './stores/tablet';
 import { useToolStore } from './stores/tool';
+import { LeftToolbar, RightPanel } from './components/SidePanel';
 import { PanelLayer } from './components/UI/PanelLayer';
 import { usePanelStore } from './stores/panel';
 
@@ -129,65 +130,24 @@ function App() {
     setIsReady(true);
   }, [initDocument]);
 
-  // Register default panels
+  // Register floating panels (only Brush panel now uses FloatingPanel)
   const registerPanel = usePanelStore((s) => s.registerPanel);
-  const openPanel = usePanelStore((s) => s.openPanel);
   const closePanel = usePanelStore((s) => s.closePanel);
 
   useEffect(() => {
-    // 1. Tools Panel (Top Left)
-    registerPanel({
-      id: 'tools-panel',
-      title: 'Tools',
-      defaultGeometry: { x: 20, y: 100, width: 64, height: 320 },
-      defaultAlignment: { horizontal: 'left', vertical: 'top', offsetX: 20, offsetY: 100 },
-      resizable: false,
-      closable: false,
-      minimizable: false,
-      minWidth: 64,
-      minHeight: 320,
-    });
-
-    // 2. Color Panel (Top Right, mimicking existing right panel top)
-    registerPanel({
-      id: 'color-panel',
-      title: 'Color',
-      defaultGeometry: { x: window.innerWidth - 300, y: 80, width: 280, height: 320 },
-      defaultAlignment: { horizontal: 'right', vertical: 'top', offsetX: 20, offsetY: 80 },
-      minWidth: 200,
-      minHeight: 200,
-    });
-
-    // 3. Brush Panel (Below Color Panel)
+    // Only Brush Panel uses FloatingPanel now
     registerPanel({
       id: 'brush-panel',
       title: 'Brush',
       defaultGeometry: { x: window.innerWidth - 300, y: 420, width: 280, height: 440 },
-      defaultAlignment: { horizontal: 'right', vertical: 'top', offsetX: 20, offsetY: 420 },
+      defaultAlignment: { horizontal: 'right', vertical: 'top', offsetX: 320, offsetY: 80 },
       minWidth: 240,
       minHeight: 350,
     });
 
-    // 4. Layer Panel (Bottom Right)
-    registerPanel({
-      id: 'layer-panel',
-      title: 'Layers',
-      defaultGeometry: { x: window.innerWidth - 300, y: 420, width: 280, height: 400 },
-      defaultAlignment: { horizontal: 'right', vertical: 'bottom', offsetX: 20, offsetY: 260 },
-      minWidth: 240,
-      maxWidth: 400,
-      minHeight: 200,
-    });
-
-    // Auto open defaults (brush-panel is opened via toolbar button)
-    openPanel('tools-panel');
-    openPanel('color-panel');
-    openPanel('layer-panel');
-
-    // Ensure these panels are closed by default
+    // Ensure brush panel is closed by default
     closePanel('brush-panel');
-    closePanel('debug-panel');
-  }, [registerPanel, openPanel, closePanel]);
+  }, [registerPanel, closePanel]);
 
   if (!isReady) {
     return (
@@ -203,6 +163,10 @@ function App() {
       <main className="workspace">
         <Canvas />
       </main>
+      {/* Fixed side panels */}
+      <LeftToolbar />
+      <RightPanel />
+      {/* Floating panels (only Brush panel now) */}
       <PanelLayer />
       <TabletPanel />
       {/* Debug Panel - dev mode only */}
