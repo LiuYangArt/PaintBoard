@@ -184,7 +184,8 @@ function App() {
     openPanel('color-panel');
     openPanel('layer-panel');
 
-    // Ensure debug panel is closed (if persisted)
+    // Ensure these panels are closed by default
+    closePanel('brush-panel');
     closePanel('debug-panel');
   }, [registerPanel, openPanel, closePanel]);
 
