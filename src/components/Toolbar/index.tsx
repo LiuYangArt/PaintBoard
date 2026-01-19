@@ -1,7 +1,26 @@
-import { Undo2, Redo2, ZoomIn, ZoomOut, Crosshair } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import {
+  Undo2,
+  Redo2,
+  ZoomIn,
+  ZoomOut,
+  Crosshair,
+  Menu,
+  Settings,
+  LayoutGrid,
+  Save,
+  LogOut,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  SlidersHorizontal,
+  Tablet,
+} from 'lucide-react';
 import { useToolStore, PressureCurve } from '@/stores/tool';
 import { useViewportStore } from '@/stores/viewport';
 import { useHistoryStore } from '@/stores/history';
+import { usePanelStore } from '@/stores/panel';
+import { toggleTabletPanelVisibility, isTabletPanelVisible } from '@/components/TabletPanel';
 import './Toolbar.css';
 
 /** Common icon props for toolbar icons */
@@ -36,6 +55,106 @@ function PressureToggle({
   );
 }
 
+/** App Menu component */
+function AppMenu() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [panelsSubmenuOpen, setPanelsSubmenuOpen] = useState(false);
+  const [tabletVisible, setTabletVisible] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Only show Brush panel in menu (Tools, Color, Layers are now fixed)
+  const brushPanel = usePanelStore((s) => s.panels['brush-panel']);
+  const openPanel = usePanelStore((s) => s.openPanel);
+  const closePanel = usePanelStore((s) => s.closePanel);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setPanelsSubmenuOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // Sync tablet visibility state when menu opens
+  useEffect(() => {
+    if (isOpen) {
+      setTabletVisible(isTabletPanelVisible());
+    }
+  }, [isOpen]);
+
+  const handleToggleBrushPanel = () => {
+    if (brushPanel?.isOpen) {
+      closePanel('brush-panel');
+    } else {
+      openPanel('brush-panel');
+    }
+  };
+
+  const handleToggleTabletPanel = () => {
+    toggleTabletPanelVisibility();
+    setTabletVisible(!tabletVisible);
+  };
+
+  return (
+    <div className="app-menu" ref={menuRef}>
+      <button className="menu-btn" onClick={() => setIsOpen(!isOpen)} title="Menu">
+        <Menu size={20} strokeWidth={1.5} />
+      </button>
+
+      {isOpen && (
+        <div className="menu-dropdown">
+          <button className="menu-item" onClick={() => setIsOpen(false)}>
+            <Settings size={16} />
+            <span>Settings</span>
+          </button>
+
+          <div
+            className="menu-item has-submenu"
+            onMouseEnter={() => setPanelsSubmenuOpen(true)}
+            onMouseLeave={() => setPanelsSubmenuOpen(false)}
+          >
+            <LayoutGrid size={16} />
+            <span>Panels</span>
+            <ChevronRight size={14} className="submenu-arrow" />
+
+            {panelsSubmenuOpen && (
+              <div className="submenu">
+                <button className="menu-item" onClick={handleToggleBrushPanel}>
+                  {brushPanel?.isOpen ? <Eye size={14} /> : <EyeOff size={14} />}
+                  <span>Brush</span>
+                </button>
+                <button className="menu-item" onClick={handleToggleTabletPanel}>
+                  {tabletVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+                  <Tablet size={14} />
+                  <span>Tablet</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="menu-divider" />
+
+          <button className="menu-item" onClick={() => setIsOpen(false)}>
+            <Save size={16} />
+            <span>Save</span>
+          </button>
+
+          <button className="menu-item" onClick={() => setIsOpen(false)}>
+            <LogOut size={16} />
+            <span>Exit</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Toolbar() {
   const {
     currentTool,
@@ -58,6 +177,19 @@ export function Toolbar() {
     toggleCrosshair,
   } = useToolStore();
 
+  // Brush panel toggle
+  const brushPanelOpen = usePanelStore((s) => s.panels['brush-panel']?.isOpen);
+  const openPanel = usePanelStore((s) => s.openPanel);
+  const closePanel = usePanelStore((s) => s.closePanel);
+
+  const toggleBrushPanel = () => {
+    if (brushPanelOpen) {
+      closePanel('brush-panel');
+    } else {
+      openPanel('brush-panel');
+    }
+  };
+
   // Get current tool size (brush or eraser)
   const currentSize = currentTool === 'eraser' ? eraserSize : brushSize;
 
@@ -79,6 +211,8 @@ export function Toolbar() {
 
   return (
     <header className="toolbar">
+      <AppMenu />
+
       <div className="toolbar-divider" />
 
       <div className="toolbar-section brush-settings">
@@ -156,6 +290,14 @@ export function Toolbar() {
           title="Toggle Crosshair (for cursor delay comparison)"
         >
           <Crosshair {...ICON_PROPS} />
+        </button>
+
+        <button
+          className={`tool-btn ${brushPanelOpen ? 'active' : ''}`}
+          onClick={toggleBrushPanel}
+          title="Brush Settings"
+        >
+          <SlidersHorizontal {...ICON_PROPS} />
         </button>
       </div>
 

@@ -163,9 +163,9 @@ export const useToolStore = create<ToolState>()(
       backgroundColor: '#ffffff',
       brushTexture: null, // No texture by default (procedural brush)
       eraserSize: 20,
-      pressureSizeEnabled: true,
-      pressureFlowEnabled: true, // Pressure affects flow by default
-      pressureOpacityEnabled: false, // Opacity ceiling not affected by pressure by default
+      pressureSizeEnabled: false,
+      pressureFlowEnabled: false,
+      pressureOpacityEnabled: true, // Only opacity affected by pressure by default
       pressureCurve: 'linear',
       showCrosshair: false,
       renderMode: 'gpu',

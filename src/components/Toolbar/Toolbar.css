@@ -1,11 +1,16 @@
+/* Toolbar - Fluent/Mica Style */
 .toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-  min-height: 48px;
+  padding: 0 12px;
+  background-color: var(--mica-bg);
+  backdrop-filter: var(--mica-blur);
+  -webkit-backdrop-filter: var(--mica-blur);
+  border-bottom: 1px solid var(--border-subtle);
+  height: 40px;
+  z-index: 100000; /* Must be above all FloatingPanels for menu dropdown */
+  position: relative; /* Ensure stacking context */
 }
 
 .toolbar-section {
@@ -16,8 +21,8 @@
 
 .toolbar-divider {
   width: 1px;
-  height: 24px;
-  background: var(--border);
+  height: 20px;
+  background: var(--divider);
 }
 
 .toolbar-spacer {
@@ -26,19 +31,27 @@
 
 /* Tool Buttons */
 .tool-btn {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  font-size: 18px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tool-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 
 .tool-btn.active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--primary-bg);
+  color: var(--primary);
 }
 
 .tool-icon {
@@ -58,69 +71,99 @@
 }
 
 .setting-label {
-  font-size: 12px;
-  color: var(--text-secondary);
-  min-width: 50px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  min-width: 40px;
 }
 
 .setting input[type="range"] {
-  width: 100px;
+  width: 80px;
+  height: 4px;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--divider);
+  border-radius: var(--radius-full);
+}
+
+.setting input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--text-primary);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.setting input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--primary);
 }
 
 .setting-value {
-  font-size: 12px;
-  color: var(--text-primary);
-  min-width: 45px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  min-width: 40px;
   text-align: right;
 }
 
 /* Pressure Curve Select */
 .pressure-select {
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 11px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-primary);
   color: var(--text-primary);
   cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.pressure-select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .pressure-select:hover {
-  border-color: var(--accent);
+  border-color: var(--primary);
 }
 
 .pressure-select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--primary);
 }
 
 /* Pressure Toggle Button */
 .pressure-toggle {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
-  font-size: 10px;
+  border-radius: var(--radius-sm);
+  font-size: 9px;
   font-weight: 600;
-  background: var(--bg-primary);
+  background: transparent;
   border: 1px solid var(--border);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .pressure-toggle:hover {
-  border-color: var(--accent);
+  border-color: var(--primary);
   color: var(--text-primary);
 }
 
 .pressure-toggle.active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--primary);
+  border-color: var(--primary);
   color: white;
 }
 
@@ -130,13 +173,14 @@
 }
 
 .color-input {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 2px solid var(--border);
-  border-radius: 4px;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-full);
   cursor: pointer;
   background: none;
+  overflow: hidden;
 }
 
 .color-input::-webkit-color-swatch-wrapper {
@@ -145,41 +189,146 @@
 
 .color-input::-webkit-color-swatch {
   border: none;
-  border-radius: 2px;
+  border-radius: var(--radius-full);
 }
 
 .color-hex {
-  font-family: monospace;
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
   text-transform: uppercase;
 }
 
 /* Actions */
 .actions button {
-  font-size: 12px;
+  font-size: 11px;
   padding: 4px 10px;
 }
 
 /* Zoom Controls */
 .zoom-controls {
-  gap: 4px;
+  gap: 2px;
 }
 
 .zoom-controls button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+}
+
+.zoom-controls button:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.zoom-controls .zoom-level {
+  width: auto;
+  min-width: 48px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+/* App Menu */
+.app-menu {
+  position: relative;
+}
+
+.menu-btn {
   width: 32px;
   height: 32px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
-.zoom-controls .zoom-level {
-  width: auto;
-  min-width: 50px;
-  padding: 0 8px;
+.menu-btn:hover {
+  background: var(--surface-hover);
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  background-color: var(--mica-bg);
+  backdrop-filter: var(--mica-blur);
+  -webkit-backdrop-filter: var(--mica-blur);
+  border: 1px solid var(--mica-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--mica-shadow);
+  padding: 4px;
+  z-index: 99999; /* Above all panels and resize handles */
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.menu-item:hover {
+  background: var(--surface-hover);
+}
+
+.menu-item.has-submenu {
+  cursor: default;
+}
+
+.menu-item .submenu-arrow {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--divider);
+  margin: 4px 8px;
+}
+
+/* Submenu */
+.submenu {
+  position: absolute;
+  left: calc(100% - 4px); /* Overlap slightly to prevent gap */
+  top: -4px; /* Align with parent padding */
+  min-width: 160px;
+  background-color: var(--mica-bg);
+  backdrop-filter: var(--mica-blur);
+  -webkit-backdrop-filter: var(--mica-blur);
+  border: 1px solid var(--mica-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--mica-shadow);
+  padding: 4px;
+  z-index: 100000; /* Above menu-dropdown */
+}
+
+.submenu .menu-item {
   font-size: 12px;
-  font-family: monospace;
+  padding: 6px 10px;
 }

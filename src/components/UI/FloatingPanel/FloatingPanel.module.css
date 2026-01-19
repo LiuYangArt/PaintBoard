@@ -1,27 +1,30 @@
+/* Floating Panel - Fluent/Mica Style */
 .floatingPanel {
   position: fixed;
-  background: var(--surface-color, #1e1e1e);
-  border: 1px solid var(--border-color, #333);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background-color: var(--mica-bg);
+  backdrop-filter: var(--mica-blur);
+  -webkit-backdrop-filter: var(--mica-blur);
+  border: 1px solid var(--mica-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--mica-shadow);
   display: flex;
   flex-direction: column;
-  overflow: visible; /* To allow resize moves outside if needed, though handles are inside */
+  overflow: visible;
   user-select: none;
   contain: layout style;
 }
 
 .panelHeader {
-  height: 32px;
-  background: var(--surface-hover, #2a2a2a);
-  border-bottom: 1px solid var(--border-color, #333);
+  height: 40px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  padding: 0 12px;
   cursor: grab;
   flex-shrink: 0;
-  border-radius: 6px 6px 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .panelHeader:active {
@@ -29,9 +32,11 @@
 }
 
 .panelTitle {
-  font-size: 13px;
-  font-weight: 500;
-  color: #ccc;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -43,27 +48,27 @@
 }
 
 .iconBtn {
-  background: none;
+  background: transparent;
   border: none;
-  color: #999;
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  padding: 6px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .iconBtn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 
 .panelContent {
   flex: 1;
   overflow: auto;
   position: relative;
-  /* padding could be handled by children */
 }
 
 /* Resize Handles */

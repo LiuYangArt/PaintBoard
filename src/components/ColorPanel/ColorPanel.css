@@ -1,18 +1,18 @@
 .color-panel {
   padding: 12px;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%; /* Take full height of panel */
+  height: 100%;
   box-sizing: border-box;
 }
 
 .color-panel h3 {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--text-primary);
   flex-shrink: 0;
 }
@@ -29,13 +29,12 @@
 .picker-area {
   display: flex; /* Row layout for Saturation + Hue */
   gap: 12px;
-  flex: 1; /* Fill remaining vertical space */
-  min-height: 150px;
+  flex-shrink: 0; /* Don't shrink */
 }
 
 .saturation-wrapper {
   flex: 1; /* Take remaining width */
-  height: 100%; /* Fill parent */
+  aspect-ratio: 1 / 1; /* Force square */
   position: relative;
 }
 
