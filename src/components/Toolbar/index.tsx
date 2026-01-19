@@ -1,7 +1,23 @@
-import { Undo2, Redo2, ZoomIn, ZoomOut, Crosshair } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import {
+  Undo2,
+  Redo2,
+  ZoomIn,
+  ZoomOut,
+  Crosshair,
+  Menu,
+  Settings,
+  LayoutGrid,
+  Save,
+  LogOut,
+  ChevronRight,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { useToolStore, PressureCurve } from '@/stores/tool';
 import { useViewportStore } from '@/stores/viewport';
 import { useHistoryStore } from '@/stores/history';
+import { usePanelStore } from '@/stores/panel';
 import './Toolbar.css';
 
 /** Common icon props for toolbar icons */
@@ -33,6 +49,100 @@ function PressureToggle({
     >
       P
     </button>
+  );
+}
+
+/** App Menu component */
+function AppMenu() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [panelsSubmenuOpen, setPanelsSubmenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const panels = usePanelStore((s) => s.panels);
+  const configs = usePanelStore((s) => s.configs);
+  const openPanel = usePanelStore((s) => s.openPanel);
+  const closePanel = usePanelStore((s) => s.closePanel);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setPanelsSubmenuOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const handleTogglePanel = (panelId: string, isCurrentlyOpen: boolean) => {
+    if (isCurrentlyOpen) {
+      closePanel(panelId);
+    } else {
+      openPanel(panelId);
+    }
+  };
+
+  const panelList = Object.entries(panels).map(([id, panel]) => ({
+    id,
+    title: configs[id]?.title || id,
+    isOpen: panel.isOpen,
+  }));
+
+  return (
+    <div className="app-menu" ref={menuRef}>
+      <button className="menu-btn" onClick={() => setIsOpen(!isOpen)} title="Menu">
+        <Menu size={20} strokeWidth={1.5} />
+      </button>
+
+      {isOpen && (
+        <div className="menu-dropdown">
+          <button className="menu-item" onClick={() => setIsOpen(false)}>
+            <Settings size={16} />
+            <span>Settings</span>
+          </button>
+
+          <div
+            className="menu-item has-submenu"
+            onMouseEnter={() => setPanelsSubmenuOpen(true)}
+            onMouseLeave={() => setPanelsSubmenuOpen(false)}
+          >
+            <LayoutGrid size={16} />
+            <span>Panels</span>
+            <ChevronRight size={14} className="submenu-arrow" />
+
+            {panelsSubmenuOpen && (
+              <div className="submenu">
+                {panelList.map((panel) => (
+                  <button
+                    key={panel.id}
+                    className="menu-item"
+                    onClick={() => handleTogglePanel(panel.id, panel.isOpen)}
+                  >
+                    {panel.isOpen ? <Eye size={14} /> : <EyeOff size={14} />}
+                    <span>{panel.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="menu-divider" />
+
+          <button className="menu-item" onClick={() => setIsOpen(false)}>
+            <Save size={16} />
+            <span>Save</span>
+          </button>
+
+          <button className="menu-item" onClick={() => setIsOpen(false)}>
+            <LogOut size={16} />
+            <span>Exit</span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -79,6 +189,8 @@ export function Toolbar() {
 
   return (
     <header className="toolbar">
+      <AppMenu />
+
       <div className="toolbar-divider" />
 
       <div className="toolbar-section brush-settings">
