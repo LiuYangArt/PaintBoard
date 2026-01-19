@@ -120,12 +120,6 @@ pnpm format           # 格式化代码
 
 版本号唯一来源: `package.json`
 
-发布流程:
-
-1. 运行 `.dev/publish_release.bat`
-2. 选择版本类型（Patch/Minor/Major）
-3. 确认推送后自动触发 GitHub Actions 构建
-
 ## Plan Mode
 
 - 提出计划时检查计划的置信度，如果不够高，尝试通过修改计划提高。
