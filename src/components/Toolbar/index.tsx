@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useToolStore, PressureCurve } from '@/stores/tool';
 import { useViewportStore } from '@/stores/viewport';
@@ -168,6 +169,19 @@ export function Toolbar() {
     toggleCrosshair,
   } = useToolStore();
 
+  // Brush panel toggle
+  const brushPanelOpen = usePanelStore((s) => s.panels['brush-panel']?.isOpen);
+  const openPanel = usePanelStore((s) => s.openPanel);
+  const closePanel = usePanelStore((s) => s.closePanel);
+
+  const toggleBrushPanel = () => {
+    if (brushPanelOpen) {
+      closePanel('brush-panel');
+    } else {
+      openPanel('brush-panel');
+    }
+  };
+
   // Get current tool size (brush or eraser)
   const currentSize = currentTool === 'eraser' ? eraserSize : brushSize;
 
@@ -268,6 +282,14 @@ export function Toolbar() {
           title="Toggle Crosshair (for cursor delay comparison)"
         >
           <Crosshair {...ICON_PROPS} />
+        </button>
+
+        <button
+          className={`tool-btn ${brushPanelOpen ? 'active' : ''}`}
+          onClick={toggleBrushPanel}
+          title="Brush Settings"
+        >
+          <SlidersHorizontal {...ICON_PROPS} />
         </button>
       </div>
 

@@ -179,10 +179,9 @@ function App() {
       minHeight: 200,
     });
 
-    // Auto open defaults
+    // Auto open defaults (brush-panel is opened via toolbar button)
     openPanel('tools-panel');
     openPanel('color-panel');
-    openPanel('brush-panel');
     openPanel('layer-panel');
 
     // Ensure debug panel is closed (if persisted)
